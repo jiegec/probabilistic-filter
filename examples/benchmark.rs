@@ -194,7 +194,12 @@ fn main() {
             construct_time: bf3_construct_time,
             actual_bits_per_key: bf3_actual_bits_per_key,
             size_in_bits: bf3_size_in_bits,
-            parameters: format!("3 way, {} bit fingerprint", bf3_effective_bits),
+            parameters: format!(
+                "3 way, {} bit fingerprint, {} segments × {} size",
+                bf3_effective_bits,
+                bf3.total_segments(),
+                bf3.segment_size()
+            ),
         };
         print_construction_results(&bf3_bench);
 
@@ -221,7 +226,12 @@ fn main() {
             construct_time: bf4_construct_time,
             actual_bits_per_key: bf4_actual_bits_per_key,
             size_in_bits: bf4_size_in_bits,
-            parameters: format!("4 way, {} bit fingerprint", bf4_effective_bits),
+            parameters: format!(
+                "4 way, {} bit fingerprint, {} segments × {} size",
+                bf4_effective_bits,
+                bf4.total_segments(),
+                bf4.segment_size()
+            ),
         };
         print_construction_results(&bf4_bench);
 

@@ -272,6 +272,21 @@ where
         };
         fp & mask
     }
+
+    /// Returns the number of segments (including padding segments) in the filter.
+    pub fn num_segments(&self) -> usize {
+        self.num_segments
+    }
+
+    /// Returns the size (number of fingerprints) in each segment.
+    pub fn segment_size(&self) -> usize {
+        self.segment_size
+    }
+
+    /// Returns the total number of segments (including padding segments).
+    pub fn total_segments(&self) -> usize {
+        self.num_segments + self.arity - 1
+    }
 }
 
 fn remove_item_from_position(
