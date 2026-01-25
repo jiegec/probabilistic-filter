@@ -81,6 +81,7 @@ fn main() {
             size_in_bits: bloom_size_in_bits,
             parameters: format!("{} hash functions", bloom_num_hashes),
         };
+        print_construction_results(&bloom_bench);
 
         // Build Cuckoo filter
         let cuckoo_items_per_bucket = 4;
@@ -142,6 +143,7 @@ fn main() {
                 cuckoo_actual_load_factor
             ),
         };
+        print_construction_results(&cuckoo_bench);
 
         // Build XOR filter
         let xor_effective_bits = (bits_per_key / 1.23).ceil() as usize;
@@ -167,6 +169,7 @@ fn main() {
             size_in_bits: xor_size_in_bits,
             parameters: format!("{} bit fingerprint", xor_effective_bits),
         };
+        print_construction_results(&xor_bench);
 
         // Build BinaryFuse 3-way filter
         let bf3_effective_bits = (bits_per_key / 1.125).ceil() as usize;
@@ -193,6 +196,7 @@ fn main() {
             size_in_bits: bf3_size_in_bits,
             parameters: format!("3 way, {} bit fingerprint", bf3_effective_bits),
         };
+        print_construction_results(&bf3_bench);
 
         // Build BinaryFuse 4-way filter
         let bf4_effective_bits = (bits_per_key / 1.075).ceil() as usize;
@@ -219,6 +223,7 @@ fn main() {
             size_in_bits: bf4_size_in_bits,
             parameters: format!("4 way, {} bit fingerprint", bf4_effective_bits),
         };
+        print_construction_results(&bf4_bench);
 
         // Run queries for each fraction against the same filters
         for &fraction in FRACTIONS {
@@ -282,20 +287,57 @@ where
     let (fp_rate, true_negatives, false_positives) =
         calculate_fp_rate(filter, query_keys, inserted_set);
 
-    print_benchmark_results(
+    print_query_results(
         benchmark.name,
-        benchmark.construct_time,
         query_time,
         positive_count,
         false_positives,
         true_negatives,
         fp_rate,
-        benchmark.actual_bits_per_key,
-        benchmark.size_in_bits,
-        &benchmark.parameters,
     );
 
     fp_rate
+}
+
+fn print_construction_results(benchmark: &FilterBenchmark) {
+    let construct_throughput = (NUM_KEYS as f64 / benchmark.construct_time.as_secs_f64()) / 1e6;
+
+    println!("  {} Filter:", benchmark.name);
+    println!(
+        "    Construction: {:?} ({:.3}M ops/s)",
+        benchmark.construct_time, construct_throughput
+    );
+    println!(
+        "    Space: {:.1} MB ({:.1} bits/key)",
+        (benchmark.size_in_bits as f64 / 8.0) / (1024.0 * 1024.0),
+        benchmark.actual_bits_per_key
+    );
+    println!("    Parameters: {}", benchmark.parameters);
+}
+
+fn print_query_results(
+    filter_name: &str,
+    query_time: Duration,
+    positive_count: usize,
+    false_positives: usize,
+    total_negatives: usize,
+    fp_rate: f64,
+) {
+    let query_throughput = NUM_QUERIES as f64 / query_time.as_secs_f64();
+
+    println!("  {} Filter:", filter_name);
+    println!(
+        "    Query: {:?} ({:.3}M ops/s)",
+        query_time,
+        query_throughput / 1e6
+    );
+    println!("    Positive queries: {} / {}", positive_count, NUM_QUERIES);
+    println!(
+        "    False positives: {} / {} ({:.6}%)",
+        false_positives,
+        total_negatives,
+        fp_rate * 100.0
+    );
 }
 
 fn generate_unique_keys(rng: &mut impl Rng, count: usize) -> Vec<u64> {
@@ -395,47 +437,6 @@ where
         0.0
     };
     (fp_rate, total_negatives, false_positives)
-}
-
-/// Print benchmark results in a consistent format
-fn print_benchmark_results(
-    filter_name: &str,
-    construct_time: Duration,
-    query_time: Duration,
-    positive_count: usize,
-    false_positives: usize,
-    total_negatives: usize,
-    fp_rate: f64,
-    actual_bits_per_key: f64,
-    size_in_bits: usize,
-    parameters: &str,
-) {
-    let construct_throughput = (NUM_KEYS as f64 / construct_time.as_secs_f64()) / 1e6;
-    let query_throughput = NUM_QUERIES as f64 / query_time.as_secs_f64();
-
-    println!("  {} Filter:", filter_name);
-    println!(
-        "    Construction: {:?} ({:.3}M ops/s)",
-        construct_time, construct_throughput
-    );
-    println!(
-        "    Query: {:?} ({:.3}M ops/s)",
-        query_time,
-        query_throughput / 1e6
-    );
-    println!("    Positive queries: {} / {}", positive_count, NUM_QUERIES);
-    println!(
-        "    False positives: {} / {} ({:.6}%)",
-        false_positives,
-        total_negatives,
-        fp_rate * 100.0
-    );
-    println!(
-        "    Space: {:.1} MB ({:.1} bits/key)",
-        (size_in_bits as f64 / 8.0) / (1024.0 * 1024.0),
-        actual_bits_per_key
-    );
-    println!("    Parameters: {}", parameters);
 }
 
 fn save_results_to_csv(results: &[BenchmarkResult], output: &str) {
