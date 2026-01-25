@@ -9,8 +9,8 @@ use std::fs::File;
 use std::io::Write;
 use std::time::{Duration, Instant};
 
-const NUM_KEYS: usize = 1_000_000;
-const NUM_QUERIES: usize = 1_000_000;
+const NUM_KEYS: usize = 10_000_000;
+const NUM_QUERIES: usize = 10_000_000;
 const FRACTIONS: &[f64] = &[0.0, 0.25, 0.5, 0.75, 1.0];
 
 #[derive(Debug, Clone)]
@@ -341,9 +341,10 @@ fn print_query_results(
 
     println!("  {} Filter:", filter_name);
     println!(
-        "    Query: {:?} ({:.3}M ops/s)",
+        "    Query: {:?} ({:.3}M ops/s, {:.3} ns/op)",
         query_time,
-        query_throughput / 1e6
+        query_throughput / 1e6,
+        query_time.as_nanos() as f64 / NUM_QUERIES as f64
     );
     println!("    Positive queries: {} / {}", positive_count, NUM_QUERIES);
     println!(
