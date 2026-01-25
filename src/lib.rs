@@ -1,14 +1,9 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+pub mod bloom;
+pub mod cuckoo;
+pub mod traits;
+pub mod xor;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub use bloom::BloomFilter;
+pub use cuckoo::CuckooFilter;
+pub use traits::{Constructible, Deletable, Insertable, ProbabilisticFilter};
+pub use xor::XorFilter;
