@@ -29,7 +29,7 @@ where
     FP: Fn(&T) -> F,
     AI: Fn(usize, F) -> usize,
 {
-    buckets: Vec<Option<F>>,
+    buckets: Vec<F>, // 0 for empty, normal fingerprint != 0
     num_buckets: usize,
     bucket_size: usize,
     max_kicks: usize,
@@ -74,7 +74,7 @@ where
         effective_bits: usize,
     ) -> Self {
         CuckooFilter {
-            buckets: vec![None; num_buckets * bucket_size],
+            buckets: vec![F::zero(); num_buckets * bucket_size],
             num_buckets,
             bucket_size,
             max_kicks,
@@ -119,9 +119,7 @@ where
     fn find_in_bucket(&self, bucket_idx: usize, fingerprint: F) -> bool {
         let offset = self.bucket_offset(bucket_idx);
         for i in 0..self.bucket_size {
-            if let Some(stored_fp) = self.buckets[offset + i]
-                && fingerprint == stored_fp
-            {
+            if fingerprint == self.buckets[offset + i] {
                 return true;
             }
         }
@@ -131,8 +129,8 @@ where
     fn insert_into_bucket(&mut self, bucket_idx: usize, fingerprint: F) -> bool {
         let offset = self.bucket_offset(bucket_idx);
         for i in 0..self.bucket_size {
-            if self.buckets[offset + i].is_none() {
-                self.buckets[offset + i] = Some(fingerprint);
+            if self.buckets[offset + i].is_zero() {
+                self.buckets[offset + i] = fingerprint;
                 return true;
             }
         }
@@ -142,8 +140,8 @@ where
     fn delete_from_bucket(&mut self, bucket_idx: usize, fingerprint: F) -> bool {
         let offset = self.bucket_offset(bucket_idx);
         for i in 0..self.bucket_size {
-            if self.buckets[offset + i] == Some(fingerprint) {
-                self.buckets[offset + i] = None;
+            if self.buckets[offset + i] == fingerprint {
+                self.buckets[offset + i] = F::zero();
                 return true;
             }
         }
@@ -153,7 +151,7 @@ where
     fn find_empty_slot(&self, bucket_idx: usize) -> Option<usize> {
         let offset = self.bucket_offset(bucket_idx);
         for i in 0..self.bucket_size {
-            if self.buckets[offset + i].is_none() {
+            if self.buckets[offset + i].is_zero() {
                 return Some(offset + i);
             }
         }
@@ -184,8 +182,7 @@ where
     }
 
     fn size_in_bits(&self) -> usize {
-        // one extra bit for Option
-        self.buckets.len() * (self.effective_bits + 1)
+        self.buckets.len() * self.effective_bits
     }
 }
 
@@ -223,15 +220,15 @@ where
 
         for _ in 0..self.max_kicks {
             if let Some(slot) = self.find_empty_slot(current_index) {
-                self.buckets[slot] = Some(current_fp);
+                self.buckets[slot] = current_fp;
                 return true;
             }
 
             // Kick out a random item from the bucket
             let offset = self.bucket_offset(current_index);
             let kick_slot = offset + rng.random_range(0..self.bucket_size);
-            let kicked_fp = self.buckets[kick_slot].unwrap();
-            self.buckets[kick_slot] = Some(current_fp);
+            let kicked_fp = self.buckets[kick_slot];
+            self.buckets[kick_slot] = current_fp;
 
             current_fp = kicked_fp;
             current_index = self.get_alt_index(current_index, kicked_fp);

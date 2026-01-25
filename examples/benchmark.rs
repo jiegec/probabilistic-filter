@@ -253,11 +253,9 @@ fn benchmark_cuckoo(
     let load_factor = 0.955;
     let num_buckets = ((NUM_KEYS as f64 / load_factor / items_per_bucket as f64).ceil() as usize)
         .next_power_of_two();
-    let fingerprint_bits = (NUM_KEYS as f64 * bits_per_key
-        / num_buckets as f64
-        / items_per_bucket as f64
-        - 1.0)
-        .ceil() as usize;
+    let fingerprint_bits =
+        (NUM_KEYS as f64 * bits_per_key / num_buckets as f64 / items_per_bucket as f64).ceil()
+            as usize;
 
     // Create hash function that takes a seed using MurmurHash3 finalizer
     fn hash_with_seed(item: &u64, seed: u64) -> u64 {
