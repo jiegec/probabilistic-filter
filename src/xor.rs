@@ -1,7 +1,7 @@
 use crate::traits::{Constructible, ProbabilisticFilter};
-use num_traits::Zero;
+use num_traits::{One, Zero};
 use std::collections::VecDeque;
-use std::ops::BitXor;
+use std::ops::{BitAnd, BitXor, Not, Shl, Sub};
 
 /// An XOR filter is a probabilistic data structure that supports membership testing.
 /// It is constructed in one pass from a set of items and cannot be modified afterward.
@@ -19,7 +19,15 @@ use std::ops::BitXor;
 /// * Thomas Mueller Graf and Daniel Lemire. 2020. Xor Filters: Faster and Smaller Than Bloom and Cuckoo Filters. ACM J. Exp. Algorithmics 25, Article 1.5 (2020), 16 pages. https://doi.org/10.1145/3376122
 pub struct XorFilter<T, F, H0, H1, H2, FP>
 where
-    F: Copy + PartialEq + Zero + BitXor<Output = F>,
+    F: Copy
+        + PartialEq
+        + Zero
+        + One
+        + BitAnd<Output = F>
+        + BitXor<Output = F>
+        + Not<Output = F>
+        + Shl<usize, Output = F>
+        + Sub<Output = F>,
     H0: Fn(&T) -> usize,
     H1: Fn(&T) -> usize,
     H2: Fn(&T) -> usize,
@@ -31,12 +39,21 @@ where
     hash1: H1,
     hash2: H2,
     fingerprint_func: FP,
+    effective_bits: usize,
     _phantom: std::marker::PhantomData<T>,
 }
 
 impl<T, F, H0, H1, H2, FP> XorFilter<T, F, H0, H1, H2, FP>
 where
-    F: Copy + PartialEq + Zero + BitXor<Output = F>,
+    F: Copy
+        + PartialEq
+        + Zero
+        + One
+        + BitAnd<Output = F>
+        + BitXor<Output = F>
+        + Not<Output = F>
+        + Shl<usize, Output = F>
+        + Sub<Output = F>,
     H0: Fn(&T) -> usize,
     H1: Fn(&T) -> usize,
     H2: Fn(&T) -> usize,
@@ -50,7 +67,15 @@ where
     /// * `hash1` - Second hash function to compute index 1
     /// * `hash2` - Third hash function to compute index 2
     /// * `fingerprint_func` - Function to compute fingerprint from an item
-    pub fn new<U>(items: U, hash0: H0, hash1: H1, hash2: H2, fingerprint_func: FP) -> Self
+    /// * `effective_bits` - Number of bits actually used from the fingerprint type
+    pub fn new<U>(
+        items: U,
+        hash0: H0,
+        hash1: H1,
+        hash2: H2,
+        fingerprint_func: FP,
+        effective_bits: usize,
+    ) -> Self
     where
         U: IntoIterator<Item = T>,
     {
@@ -65,14 +90,13 @@ where
                 hash1,
                 hash2,
                 fingerprint_func,
+                effective_bits,
                 _phantom: std::marker::PhantomData,
             };
         }
 
-        // Calculate array size: 1.23 * num_items + 32, rounded up to next power of 2
-        let mut array_size = ((num_items as f64 * 1.23 + 32.0).ceil()) as usize;
-        array_size = array_size.max(32).next_power_of_two();
-
+        // Calculate array size: 1.23 * num_items + 32
+        let array_size = ((num_items as f64 * 1.23 + 32.0).ceil()) as usize;
         let mut fingerprints = vec![F::zero(); array_size];
 
         // Build a map from position to list of items that use this position
@@ -158,6 +182,7 @@ where
             hash1,
             hash2,
             fingerprint_func,
+            effective_bits,
             _phantom: std::marker::PhantomData,
         }
     }
@@ -189,7 +214,15 @@ fn check_positions_for_queue(
 
 impl<T, F, H0, H1, H2, FP> ProbabilisticFilter<T> for XorFilter<T, F, H0, H1, H2, FP>
 where
-    F: Copy + PartialEq + Zero + BitXor<Output = F>,
+    F: Copy
+        + PartialEq
+        + Zero
+        + One
+        + BitAnd<Output = F>
+        + BitXor<Output = F>
+        + Not<Output = F>
+        + Shl<usize, Output = F>
+        + Sub<Output = F>,
     H0: Fn(&T) -> usize,
     H1: Fn(&T) -> usize,
     H2: Fn(&T) -> usize,
@@ -203,30 +236,47 @@ where
         let idx2 = (self.hash2)(item) % self.array_size;
 
         let xored = self.fingerprints[idx0] ^ self.fingerprints[idx1] ^ self.fingerprints[idx2];
-        xored == fingerprint
+
+        // Mask to only compare effective bits
+        // For full-width effective_bits, use all ones mask
+        let full_bits = std::mem::size_of::<F>() * 8;
+        let mask = if self.effective_bits >= full_bits {
+            !F::zero()
+        } else {
+            (F::one() << self.effective_bits) - F::one()
+        };
+        (xored & mask) == (fingerprint & mask)
     }
 
     fn size_in_bits(&self) -> usize {
-        self.fingerprints.len() * std::mem::size_of::<F>() * 8
+        self.fingerprints.len() * self.effective_bits
     }
 }
 
 impl<T, F, H0, H1, H2, FP> Constructible<T> for XorFilter<T, F, H0, H1, H2, FP>
 where
-    F: Copy + PartialEq + Zero + BitXor<Output = F>,
+    F: Copy
+        + PartialEq
+        + Zero
+        + One
+        + BitAnd<Output = F>
+        + BitXor<Output = F>
+        + Not<Output = F>
+        + Shl<usize, Output = F>
+        + Sub<Output = F>,
     H0: Fn(&T) -> usize,
     H1: Fn(&T) -> usize,
     H2: Fn(&T) -> usize,
     FP: Fn(&T) -> F,
 {
-    type Config = (H0, H1, H2, FP);
+    type Config = (H0, H1, H2, FP, usize);
 
     fn from_iter_with<U>(items: U, config: Self::Config) -> Self
     where
         Self: Sized,
         U: IntoIterator<Item = T>,
     {
-        Self::new(items, config.0, config.1, config.2, config.3)
+        Self::new(items, config.0, config.1, config.2, config.3, config.4)
     }
 }
 
@@ -244,8 +294,9 @@ mod tests {
         let fp_func =
             |item: &u64| -> u8 { (item.wrapping_mul(0x5bd1e9955bd1e995) & 0xFF) as u8 | 1 };
         let items: Vec<u64> = vec![1, 2, 3];
+        let effective_bits = 8;
 
-        let xor = XorFilter::from_iter_with(items, (hash0, hash1, hash2, fp_func));
+        let xor = XorFilter::from_iter_with(items, (hash0, hash1, hash2, fp_func, effective_bits));
 
         assert!(xor.contains(&1));
         assert!(xor.contains(&2));
@@ -263,8 +314,9 @@ mod tests {
         let fp_func =
             |item: &u64| -> u8 { (item.wrapping_mul(0x5bd1e9955bd1e995) & 0xFF) as u8 | 1 };
         let items: Vec<u64> = vec![];
+        let effective_bits = 8;
 
-        let xor = XorFilter::from_iter_with(items, (hash0, hash1, hash2, fp_func));
+        let xor = XorFilter::from_iter_with(items, (hash0, hash1, hash2, fp_func, effective_bits));
 
         assert!(!xor.contains(&1));
     }

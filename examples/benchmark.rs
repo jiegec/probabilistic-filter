@@ -8,8 +8,8 @@ use std::fs::File;
 use std::io::Write;
 use std::time::Instant;
 
-const NUM_KEYS: usize = 100_000;
-const NUM_QUERIES: usize = 100_000;
+const NUM_KEYS: usize = 1_000_000;
+const NUM_QUERIES: usize = 1_000_000;
 const FRACTIONS: &[f64] = &[0.0, 0.25, 0.5, 0.75, 1.0];
 
 #[derive(Debug, Clone)]
@@ -34,7 +34,7 @@ fn main() {
 
     println!("Generated {} unique keys\n", inserted_keys.len());
 
-    let bits_per_keys = vec![4.0, 8.0, 12.0, 16.0, 24.0, 32.0];
+    let bits_per_keys = vec![8.0, 12.0, 16.0, 20.0, 24.0];
     let mut all_results: Vec<BenchmarkResult> = Vec::new();
 
     for &bits_per_key in &bits_per_keys {
@@ -209,7 +209,7 @@ fn benchmark_bloom(
     );
     println!(
         "    Space: {:.1} MB ({:.1} bits/key)",
-        (num_bits as f64 / 8.0) / (1024.0 * 1024.0),
+        (bloom.size_in_bits() as f64 / 8.0) / (1024.0 * 1024.0),
         actual_bits_per_key
     );
 
@@ -225,7 +225,8 @@ fn benchmark_cuckoo(
 ) -> (f64, f64) {
     let fingerprint_bits = 8.0;
     let items_per_bucket = 4.0;
-    let num_buckets = ((NUM_KEYS as f64 * bits_per_key) / (fingerprint_bits * items_per_bucket))
+    let num_buckets = ((NUM_KEYS as f64 * bits_per_key)
+        / ((fingerprint_bits + 1.0) * items_per_bucket))
         .ceil()
         .max(1.0) as usize;
 
@@ -312,7 +313,7 @@ fn benchmark_cuckoo(
     );
     println!(
         "    Space: {:.1} MB ({:.1} bits/key)",
-        ((num_buckets * 4 * 1) as f64 / 8.0) / (1024.0 * 1024.0),
+        (cuckoo.size_in_bits() as f64 / 8.0) / (1024.0 * 1024.0),
         actual_bits_per_key
     );
 
@@ -325,8 +326,9 @@ fn benchmark_xor(
     inserted_set: &HashSet<u64>,
     bits_per_key: f64,
 ) -> (f64, f64) {
-    let fingerprint_size = ((bits_per_key / 1.23).log2()).ceil() as usize;
-    let fingerprint_size = fingerprint_size.clamp(8, 32);
+    // Calculate effective_bits from target bits per key
+    // Effective bits determines fingerprint size used for space calculation
+    let effective_bits = (bits_per_key / 1.23).ceil() as usize;
 
     let seed0: u64 = 0x5bd1e9955bd1e995;
     let seed1: u64 = 0x9e3779b97f4a7c1;
@@ -336,14 +338,14 @@ fn benchmark_xor(
     let hash1 = move |item: &u64| -> usize { item.wrapping_mul(seed1) as usize };
     let hash2 = move |item: &u64| -> usize { item.wrapping_mul(seed2) as usize };
 
-    let fp_mask = (1u64 << fingerprint_size) - 1;
+    let fp_mask = (1u64 << effective_bits) - 1;
     let fingerprint_func =
         move |item: &u64| -> u64 { (item.wrapping_mul(0x9e3779b97f4a7c15) & fp_mask) | 1 };
 
     let start = Instant::now();
     let xor = XorFilter::from_iter_with(
         inserted_keys.iter().copied(),
-        (hash0, hash1, hash2, fingerprint_func),
+        (hash0, hash1, hash2, fingerprint_func, effective_bits),
     );
     let construct_time = start.elapsed();
 
@@ -377,8 +379,7 @@ fn benchmark_xor(
     let actual_bits_per_key = xor.bits_per_key(NUM_KEYS);
 
     let query_throughput = NUM_QUERIES as f64 / query_time.as_secs_f64();
-    let array_size = ((NUM_KEYS as f64 * 1.23 + 32.0).ceil() as usize).next_power_of_two();
-    let space_mb = (array_size as f64 * (fingerprint_size as f64 / 8.0)) / (1024.0 * 1024.0);
+    let space_mb = (xor.size_in_bits() as f64 / 8.0) / (1024.0 * 1024.0);
 
     println!("  XOR Filter:");
     println!(
