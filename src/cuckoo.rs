@@ -181,7 +181,7 @@ where
         let index = self.get_index(item);
         let alt_index = self.get_alt_index(index, fingerprint);
         // validate that get_alt_index impl is correct
-        assert_eq!(index, self.get_alt_index(alt_index, fingerprint));
+        debug_assert_eq!(index, self.get_alt_index(alt_index, fingerprint));
 
         self.find_in_bucket(index, fingerprint) || self.find_in_bucket(alt_index, fingerprint)
     }

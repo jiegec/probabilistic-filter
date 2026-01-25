@@ -28,11 +28,23 @@ xor_data = [
     for r in data
     if r["filter_type"] == "XOR"
 ]
+binaryfuse3_data = [
+    (float(r["bits_per_key"]), float(r["fp_rate"]))
+    for r in data
+    if r["filter_type"] == "BinaryFuse3"
+]
+binaryfuse4_data = [
+    (float(r["bits_per_key"]), float(r["fp_rate"]))
+    for r in data
+    if r["filter_type"] == "BinaryFuse4"
+]
 
 # Sort by bits_per_key for each filter type
 bloom_data.sort(key=lambda x: x[0])
 cuckoo_data.sort(key=lambda x: x[0])
 xor_data.sort(key=lambda x: x[0])
+binaryfuse3_data.sort(key=lambda x: x[0])
+binaryfuse4_data.sort(key=lambda x: x[0])
 
 # Unzip for plotting
 if bloom_data:
@@ -50,6 +62,16 @@ if xor_data:
 else:
     xor_x, xor_y = [], []
 
+if binaryfuse3_data:
+    bf3_x, bf3_y = zip(*binaryfuse3_data)
+else:
+    bf3_x, bf3_y = [], []
+
+if binaryfuse4_data:
+    bf4_x, bf4_y = zip(*binaryfuse4_data)
+else:
+    bf4_x, bf4_y = [], []
+
 # Create plot
 fig, ax = plt.subplots(figsize=(10, 7))
 
@@ -60,6 +82,10 @@ if cuckoo_x:
     ax.scatter(cuckoo_x, cuckoo_y, c="red", label="Cuckoo", s=100, alpha=0.7)
 if xor_x:
     ax.scatter(xor_x, xor_y, c="green", label="XOR", s=100, alpha=0.7)
+if bf3_x:
+    ax.scatter(bf3_x, bf3_y, c="purple", label="BinaryFuse-3", s=100, alpha=0.7)
+if bf4_x:
+    ax.scatter(bf4_x, bf4_y, c="orange", label="BinaryFuse-4", s=100, alpha=0.7)
 
 # Connect points with lines for each filter type
 if len(bloom_x) > 1:
@@ -68,6 +94,10 @@ if len(cuckoo_x) > 1:
     ax.plot(cuckoo_x, cuckoo_y, c="red", alpha=0.5, linestyle="--")
 if len(xor_x) > 1:
     ax.plot(xor_x, xor_y, c="green", alpha=0.5, linestyle="--")
+if len(bf3_x) > 1:
+    ax.plot(bf3_x, bf3_y, c="purple", alpha=0.5, linestyle="--")
+if len(bf4_x) > 1:
+    ax.plot(bf4_x, bf4_y, c="orange", alpha=0.5, linestyle="--")
 
 # Plot theoretical curves
 # Generate false positive rates from 1e-6 to 1e-1
@@ -77,11 +107,15 @@ eps_theoretical = np.logspace(-6, -1, 100)
 # Bloom: bits_per_key = 1.44 * log2(1/ε)
 # Cuckoo: bits_per_key = (log2(1/ε) + 3) / 0.955
 # XOR: bits_per_key = 1.23 * log2(1/ε)
+# BinaryFuse-3: bits_per_key = 1.125 * log2(1/ε)
+# BinaryFuse-4: bits_per_key = 1.075 * log2(1/ε)
 
 log2_eps = np.log2(eps_theoretical)
 theoretical_bloom = 1.44 * (-log2_eps)
 theoretical_cuckoo = (-log2_eps + 3) / 0.955
 theoretical_xor = 1.23 * (-log2_eps)
+theoretical_bf3 = 1.125 * (-log2_eps)
+theoretical_bf4 = 1.075 * (-log2_eps)
 
 ax.plot(
     theoretical_bloom,
@@ -109,6 +143,24 @@ ax.plot(
     linestyle="-.",
     linewidth=2,
     label="XOR (theoretical)",
+)
+ax.plot(
+    theoretical_bf3,
+    eps_theoretical,
+    c="purple",
+    alpha=0.8,
+    linestyle="-.",
+    linewidth=2,
+    label="BinaryFuse-3 (theoretical)",
+)
+ax.plot(
+    theoretical_bf4,
+    eps_theoretical,
+    c="orange",
+    alpha=0.8,
+    linestyle="-.",
+    linewidth=2,
+    label="BinaryFuse-4 (theoretical)",
 )
 
 # Set log scale for y axis

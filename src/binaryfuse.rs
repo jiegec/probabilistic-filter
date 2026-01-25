@@ -140,7 +140,7 @@ where
             _ => unreachable!("Invalid arity"),
         };
         // round up to multiples of segment size
-        let mut num_segments = (array_size + segment_size - 1) / segment_size;
+        let mut num_segments = array_size.div_ceil(segment_size);
         if num_segments < config.arity {
             num_segments = config.arity;
         }
@@ -165,10 +165,9 @@ where
                 // starting segment index
                 let segment_idx = hash(item, seed0) % num_segments;
                 let mut indices = vec![];
-                for i in 0..config.arity {
+                for (i, seed) in seeds.iter().enumerate() {
                     // consecutive segment indices
-                    let idx =
-                        (segment_idx + i) * segment_size + hash(item, seeds[i]) % segment_size;
+                    let idx = (segment_idx + i) * segment_size + hash(item, *seed) % segment_size;
                     indices.push(idx);
                 }
 
@@ -200,7 +199,7 @@ where
 
                 // Skip if position no longer has exactly one item
                 if pos_to_items[pos].len() != 1 {
-                    assert!(pos_to_items[pos].is_empty());
+                    debug_assert!(pos_to_items[pos].is_empty());
                     continue;
                 }
 

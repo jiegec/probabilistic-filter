@@ -4,7 +4,7 @@ pub mod cuckoo;
 pub mod traits;
 pub mod xor;
 
-pub use binaryfuse::{BinaryFuseFilter, BinaryFuseConfig};
+pub use binaryfuse::{BinaryFuseConfig, BinaryFuseFilter};
 pub use bloom::BloomFilter;
 pub use cuckoo::CuckooFilter;
 pub use traits::{Constructible, Deletable, Insertable, ProbabilisticFilter};
