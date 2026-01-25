@@ -145,7 +145,9 @@ where
             num_segments = config.arity;
         }
 
-        array_size = num_segments * segment_size;
+        // add extra segments to avoid modulo operation
+        // and make it easy to find solution
+        array_size = (num_segments + config.arity - 1) * segment_size;
         let mut fingerprints = vec![F::zero(); array_size];
 
         let mut rng = rand::rng();
@@ -165,8 +167,8 @@ where
                 let mut indices = vec![];
                 for i in 0..config.arity {
                     // consecutive segment indices
-                    let idx = (segment_idx + i) % num_segments * segment_size
-                        + hash(item, seeds[i]) % segment_size;
+                    let idx =
+                        (segment_idx + i) * segment_size + hash(item, seeds[i]) % segment_size;
                     indices.push(idx);
                 }
 
@@ -198,6 +200,7 @@ where
 
                 // Skip if position no longer has exactly one item
                 if pos_to_items[pos].len() != 1 {
+                    assert!(pos_to_items[pos].is_empty());
                     continue;
                 }
 
@@ -218,7 +221,6 @@ where
                 check_positions_for_queue(&pos_to_items, &mut queue, &mut in_queue, &other_indices);
             }
 
-            println!("{} == {}", stack.len(), num_items);
             if stack.len() != num_items {
                 // try again
                 continue;
@@ -317,7 +319,7 @@ where
         let segment_idx = (self.hash)(item, self.seed0) % self.num_segments;
         for i in 0..self.arity {
             // consecutive segment indices
-            let idx = (segment_idx + i) % self.num_segments * self.segment_size
+            let idx = (segment_idx + i) * self.segment_size
                 + (self.hash)(item, self.seeds[i]) % self.segment_size;
             fingerprint = fingerprint ^ self.fingerprints[idx];
         }

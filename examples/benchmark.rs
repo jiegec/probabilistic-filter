@@ -2,6 +2,7 @@ use probabilistic_filter::bloom::BloomFilter;
 use probabilistic_filter::cuckoo::CuckooFilter;
 use probabilistic_filter::traits::{Constructible, Insertable, ProbabilisticFilter};
 use probabilistic_filter::xor::XorFilter;
+use probabilistic_filter::{BinaryFuseConfig, BinaryFuseFilter};
 use rand::Rng;
 use std::collections::HashSet;
 use std::fs::File;
@@ -81,6 +82,28 @@ fn main() {
                 all_results.push(BenchmarkResult {
                     bits_per_key: actual_bits_per_key,
                     filter_type: "XOR".to_string(),
+                    fp_rate,
+                });
+            }
+
+            // Benchmark BinaryFuse 3-way filter
+            let (fp_rate, actual_bits_per_key) =
+                benchmark_binaryfuse(&inserted_keys, &query_keys, &inserted_set, bits_per_key, 3);
+            if fraction == 0.0 {
+                all_results.push(BenchmarkResult {
+                    bits_per_key: actual_bits_per_key,
+                    filter_type: "BinaryFuse3".to_string(),
+                    fp_rate,
+                });
+            }
+
+            // Benchmark BinaryFuse 4-way filter
+            let (fp_rate, actual_bits_per_key) =
+                benchmark_binaryfuse(&inserted_keys, &query_keys, &inserted_set, bits_per_key, 4);
+            if fraction == 0.0 {
+                all_results.push(BenchmarkResult {
+                    bits_per_key: actual_bits_per_key,
+                    filter_type: "BinaryFuse4".to_string(),
                     fp_rate,
                 });
             }
@@ -401,6 +424,54 @@ fn benchmark_xor(
         actual_bits_per_key,
         xor.size_in_bits(),
         &format!("{} bit fingerprint", effective_bits),
+    );
+
+    (fp_rate, actual_bits_per_key)
+}
+
+fn benchmark_binaryfuse(
+    inserted_keys: &[u64],
+    query_keys: &[u64],
+    inserted_set: &HashSet<u64>,
+    bits_per_key: f64,
+    arity: usize,
+) -> (f64, f64) {
+    let effective_bits = (bits_per_key / if arity == 3 { 1.125 } else { 1.075 }).ceil() as usize;
+
+    let hash = move |item: &u64, seed: u64| -> usize { hash_with_seed(item, seed) as usize };
+
+    let fingerprint_func = move |item: &u64| -> u64 { item.wrapping_mul(0x9e3779b97f4a7c15) };
+
+    let config = BinaryFuseConfig::new(arity, effective_bits);
+
+    let start = Instant::now();
+    let binaryfuse = BinaryFuseFilter::from_iter_with(
+        inserted_keys.iter().copied(),
+        (hash, fingerprint_func, config),
+    );
+    let construct_time = start.elapsed();
+
+    assert!(
+        inserted_keys.iter().all(|&k| binaryfuse.contains(&k)),
+        "BinaryFuse filter: all inserted keys should return true for contains()"
+    );
+
+    let (query_time, positive_count) = run_queries(&binaryfuse, query_keys);
+    let (fp_rate, true_negatives, false_positives) =
+        calculate_fp_rate(&binaryfuse, query_keys, inserted_set);
+    let actual_bits_per_key = binaryfuse.bits_per_key(NUM_KEYS);
+
+    print_benchmark_results(
+        &format!("BinaryFuse{}", arity),
+        construct_time,
+        query_time,
+        positive_count,
+        false_positives,
+        true_negatives,
+        fp_rate,
+        actual_bits_per_key,
+        binaryfuse.size_in_bits(),
+        &format!("{} way, {} bit fingerprint", arity, effective_bits),
     );
 
     (fp_rate, actual_bits_per_key)
