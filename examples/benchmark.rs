@@ -236,6 +236,7 @@ fn benchmark_bloom(
         (bloom.size_in_bits() as f64 / 8.0) / (1024.0 * 1024.0),
         actual_bits_per_key
     );
+    println!("    Parameters: {} hash functions", num_hashes);
 
     (fp_rate, actual_bits_per_key)
 }
@@ -369,6 +370,10 @@ fn benchmark_cuckoo(
         "    Space: {:.1} MB ({:.1} bits/key)",
         (cuckoo.size_in_bits() as f64 / 8.0) / (1024.0 * 1024.0),
         actual_bits_per_key
+    );
+    println!(
+        "    Parameters: {} buckets, {} items per bucket, {} bit fingerprint",
+        num_buckets, items_per_bucket, fingerprint_bits
     );
 
     (fp_rate, actual_bits_per_key)
