@@ -1,4 +1,5 @@
 use crate::traits::{Deletable, Insertable, ProbabilisticFilter};
+use crate::utils::mask_fingerprint;
 use num_traits::{One, Zero};
 use rand::Rng;
 use std::ops::{BitAnd, Not, Shl, Sub};
@@ -100,15 +101,7 @@ where
     }
 
     fn mask_fingerprint(&self, fp: F) -> F {
-        // Mask to only use effective bits
-        // For full-width effective_bits, use all ones mask
-        let full_bits = std::mem::size_of::<F>() * 8;
-        let mask = if self.effective_bits >= full_bits {
-            !F::zero()
-        } else {
-            (F::one() << self.effective_bits) - F::one()
-        };
-        fp & mask
+        mask_fingerprint(self.effective_bits, fp)
     }
 
     fn get_alt_index(&self, index: usize, fingerprint: F) -> usize {

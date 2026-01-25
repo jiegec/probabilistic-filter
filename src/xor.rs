@@ -1,4 +1,5 @@
 use crate::traits::{Constructible, ProbabilisticFilter};
+use crate::utils::mask_fingerprint;
 use num_traits::{One, Zero};
 use rand::Rng;
 use std::collections::VecDeque;
@@ -200,22 +201,10 @@ where
 
     fn get_fingerprint(fingerprint_func: &FP, effective_bits: usize, item: &T) -> F {
         let fp = fingerprint_func(item);
-        let masked = Self::mask_fingerprint(effective_bits, fp);
+        let masked = mask_fingerprint(effective_bits, fp);
         // Ensure non-zero fingerprint (0 does not change xor result)
         // Only adjust if masked result is actually zero
         if masked.is_zero() { F::one() } else { masked }
-    }
-
-    fn mask_fingerprint(effective_bits: usize, fp: F) -> F {
-        // Mask to only use effective bits
-        // For full-width effective_bits, use all ones mask
-        let full_bits = std::mem::size_of::<F>() * 8;
-        let mask = if effective_bits >= full_bits {
-            !F::zero()
-        } else {
-            (F::one() << effective_bits) - F::one()
-        };
-        fp & mask
     }
 
     /// Returns the number of fingerprints stored in the filter.

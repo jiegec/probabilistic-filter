@@ -1,4 +1,5 @@
 use crate::traits::{Constructible, ProbabilisticFilter};
+use crate::utils::mask_fingerprint;
 use num_traits::{One, Zero};
 use rand::Rng;
 use std::{collections::VecDeque, ops::Not};
@@ -257,20 +258,9 @@ where
 
     fn get_fingerprint(fingerprint_func: &FP, effective_bits: usize, item: &T) -> F {
         let fp = fingerprint_func(item);
-        let masked = Self::mask_fingerprint(effective_bits, fp);
+        let masked = mask_fingerprint(effective_bits, fp);
         // Ensure non-zero fingerprint (0 represents empty slot)
         if masked.is_zero() { F::one() } else { masked }
-    }
-
-    fn mask_fingerprint(effective_bits: usize, fp: F) -> F {
-        let full_bits = std::mem::size_of::<F>() * 8;
-        let one = F::one();
-        let mask = if effective_bits >= full_bits {
-            !F::zero()
-        } else {
-            (one << effective_bits) - one
-        };
-        fp & mask
     }
 
     /// Returns the number of segments (including padding segments) in the filter.
