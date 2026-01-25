@@ -93,7 +93,10 @@ where
 
     fn get_fingerprint(&self, item: &T) -> F {
         let fp = (self.fingerprint_func)(item);
-        self.mask_fingerprint(fp)
+        let masked = self.mask_fingerprint(fp);
+        // Ensure non-zero fingerprint (0 is used as sentinel for empty slots)
+        // Only adjust if masked result is actually zero
+        if masked.is_zero() { F::one() } else { masked }
     }
 
     fn mask_fingerprint(&self, fp: F) -> F {
@@ -275,7 +278,7 @@ mod tests {
         let effective_bits = 8;
 
         let hash_fn = |item: &u64| item.wrapping_mul(0x5bd1e9955bd1e995);
-        let fp_func = |item: &u64| (hash_fn(item) & 0xFF) as u8 | 1;
+        let fp_func = |item: &u64| hash_fn(item) as u8;
         let alt_func = |index: usize, fp: u8| {
             (index as u64 ^ (fp as u64).wrapping_mul(0x5bd1e9955bd1e995)) as usize
         };
@@ -302,7 +305,7 @@ mod tests {
         let effective_bits = 8;
 
         let hash_fn = |item: &u64| item.wrapping_mul(0x5bd1e9955bd1e995);
-        let fp_func = |item: &u64| (hash_fn(item) & 0xFF) as u8 | 1;
+        let fp_func = |item: &u64| hash_fn(item) as u8;
         let alt_func = |index: usize, fp: u8| {
             (index as u64 ^ (fp as u64).wrapping_mul(0x5bd1e9955bd1e995)) as usize
         };
@@ -332,7 +335,7 @@ mod tests {
         let effective_bits = 8;
 
         let hash_fn = |item: &u64| item.wrapping_mul(0x5bd1e9955bd1e995);
-        let fp_func = |item: &u64| (hash_fn(item) & 0xFF) as u8 | 1;
+        let fp_func = |item: &u64| hash_fn(item) as u8;
         let alt_func = |index: usize, fp: u8| {
             (index as u64 ^ (fp as u64).wrapping_mul(0x5bd1e9955bd1e995)) as usize
         };
@@ -361,7 +364,7 @@ mod tests {
         let effective_bits = 8;
 
         let hash_fn = |item: &u64| item.wrapping_mul(0x5bd1e9955bd1e995);
-        let fp_func = |item: &u64| (hash_fn(item) & 0xFF) as u8 | 1;
+        let fp_func = |item: &u64| hash_fn(item) as u8;
         let alt_func = |index: usize, fp: u8| {
             (index as u64 ^ (fp as u64).wrapping_mul(0x5bd1e9955bd1e995)) as usize
         };

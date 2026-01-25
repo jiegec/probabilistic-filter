@@ -253,6 +253,7 @@ fn benchmark_cuckoo(
     let load_factor = 0.955;
     let num_buckets = ((NUM_KEYS as f64 / load_factor / items_per_bucket as f64).ceil() as usize)
         .next_power_of_two();
+    let actual_load_factor = NUM_KEYS as f64 / num_buckets as f64 / items_per_bucket as f64;
     let fingerprint_bits =
         (NUM_KEYS as f64 * bits_per_key / num_buckets as f64 / items_per_bucket as f64).ceil()
             as usize;
@@ -272,10 +273,7 @@ fn benchmark_cuckoo(
     let hash = move |item: &u64| -> u64 { hash_with_seed(item, seed) };
 
     let fp_seed: u64 = rng.random();
-    let fingerprint_func = move |item: &u64| -> u64 {
-        let h = hash_with_seed(item, fp_seed);
-        h | 1
-    };
+    let fingerprint_func = move |item: &u64| -> u64 { hash_with_seed(item, fp_seed) };
 
     let alt_index = move |index: usize, fp: u64| -> usize {
         let hashed_fp = hash_with_seed(&fp, fp_seed);
@@ -370,8 +368,8 @@ fn benchmark_cuckoo(
         actual_bits_per_key
     );
     println!(
-        "    Parameters: {} buckets, {} items per bucket, {} bit fingerprint",
-        num_buckets, items_per_bucket, fingerprint_bits
+        "    Parameters: {} buckets, {} items per bucket, {} bit fingerprint, {:.3} load factor",
+        num_buckets, items_per_bucket, fingerprint_bits, actual_load_factor
     );
 
     (fp_rate, actual_bits_per_key)
