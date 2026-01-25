@@ -6,7 +6,7 @@ use rand::Rng;
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::Write;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 const NUM_KEYS: usize = 1_000_000;
 const NUM_QUERIES: usize = 1_000_000;
@@ -136,6 +136,103 @@ fn generate_query_keys(
     query_keys
 }
 
+/// Shared hash function with seed support using MurmurHash3 finalizer
+fn hash_with_seed(item: &u64, seed: u64) -> u64 {
+    let mut h = seed.wrapping_add(*item);
+    h ^= h >> 33;
+    h = h.wrapping_mul(0xff51afd7ed558ccd);
+    h ^= h >> 33;
+    h = h.wrapping_mul(0xc4ceb9fe1a85ec53);
+    h ^= h >> 33;
+    h
+}
+
+/// Run queries against a filter and return query time and positive count
+fn run_queries<F>(filter: &F, query_keys: &[u64]) -> (Duration, usize)
+where
+    F: ProbabilisticFilter<u64>,
+{
+    let start = Instant::now();
+    let mut positive_count = 0usize;
+    for key in query_keys {
+        if filter.contains(key) {
+            positive_count += 1;
+        }
+    }
+    (start.elapsed(), positive_count)
+}
+
+/// Calculate false positive rate from query results
+/// Returns (fp_rate, total_negatives, false_positives)
+fn calculate_fp_rate<F>(
+    filter: &F,
+    query_keys: &[u64],
+    inserted_set: &HashSet<u64>,
+) -> (f64, usize, usize)
+where
+    F: ProbabilisticFilter<u64>,
+{
+    let mut total_negatives = 0usize;
+    let mut false_positives = 0usize;
+    for key in query_keys {
+        let is_actually_in = inserted_set.contains(key);
+        let is_reported_in = filter.contains(key);
+        if !is_actually_in {
+            total_negatives += 1;
+            if is_reported_in {
+                false_positives += 1;
+            }
+        }
+    }
+    let fp_rate = if total_negatives > 0 {
+        false_positives as f64 / total_negatives as f64
+    } else {
+        0.0
+    };
+    (fp_rate, total_negatives, false_positives)
+}
+
+/// Print benchmark results in a consistent format
+fn print_benchmark_results(
+    filter_name: &str,
+    construct_time: Duration,
+    query_time: Duration,
+    positive_count: usize,
+    false_positives: usize,
+    total_negatives: usize,
+    fp_rate: f64,
+    actual_bits_per_key: f64,
+    size_in_bits: usize,
+    parameters: &str,
+) {
+    let construct_throughput = (NUM_KEYS as f64 / construct_time.as_secs_f64()) / 1e6;
+    let query_throughput = NUM_QUERIES as f64 / query_time.as_secs_f64();
+
+    println!("  {} Filter:", filter_name);
+    println!(
+        "    Construction: {:?} ({:.3}M ops/s)",
+        construct_time, construct_throughput
+    );
+    println!(
+        "    Query: {:?} ({:.3}M ops/s)",
+        query_time,
+        query_throughput / 1e6
+    );
+    println!("    Positive queries: {} / {}", positive_count, NUM_QUERIES);
+    println!(
+        "    False positives: {} / {} ({:.6}%)",
+        false_positives,
+        total_negatives,
+        fp_rate * 100.0
+    );
+    println!(
+        "    Space: {:.1} MB ({:.1} bits/key)",
+        (size_in_bits as f64 / 8.0) / (1024.0 * 1024.0),
+        actual_bits_per_key
+    );
+    println!("    Parameters: {}", parameters);
+}
+
 fn benchmark_bloom(
     inserted_keys: &[u64],
     query_keys: &[u64],
@@ -144,25 +241,11 @@ fn benchmark_bloom(
 ) -> (f64, f64) {
     let num_bits = (NUM_KEYS as f64 * bits_per_key).ceil() as usize;
 
-    // Calculate optimal number of hash functions
     let num_hashes = BloomFilter::<u64, fn(&u64) -> u64>::optimal_num_hashes(num_bits, NUM_KEYS);
 
-    // Generate seeds for hash functions
     let mut rng = rand::rng();
     let seeds: Vec<u64> = (0..num_hashes).map(|_| rng.random()).collect();
 
-    // Create hash function that takes a seed
-    fn hash_with_seed(item: &u64, seed: u64) -> u64 {
-        let mut h = seed.wrapping_add(*item);
-        h ^= h >> 33;
-        h = h.wrapping_mul(0xff51afd7ed558ccd);
-        h ^= h >> 33;
-        h = h.wrapping_mul(0xc4ceb9fe1a85ec53);
-        h ^= h >> 33;
-        h
-    }
-
-    // Create hash functions using match arms - each closure captures its own seed
     let mut hash_funcs: Vec<Box<dyn Fn(&u64) -> u64>> = Vec::new();
     for i in 0..num_hashes {
         let seed = seeds[i];
@@ -176,67 +259,28 @@ fn benchmark_bloom(
     }
     let construct_time = start.elapsed();
 
-    // Validate that all inserted keys are positive (contains returns true)
     assert!(
         inserted_keys.iter().all(|&k| bloom.contains(&k)),
         "Bloom filter: all inserted keys should return true for contains()"
     );
 
-    let start = Instant::now();
-    let mut positive_count = 0usize;
-    for key in query_keys {
-        if bloom.contains(key) {
-            positive_count += 1;
-        }
-    }
-    let query_time = start.elapsed();
-
-    let mut true_negatives = 0usize;
-    let mut false_positives = 0usize;
-    for key in query_keys {
-        let is_actually_in = inserted_set.contains(key);
-        let is_reported_in = bloom.contains(key);
-        if !is_actually_in {
-            true_negatives += 1;
-            if is_reported_in {
-                false_positives += 1;
-            }
-        }
-    }
-    let fp_rate = if true_negatives > 0 {
-        false_positives as f64 / true_negatives as f64
-    } else {
-        0.0
-    };
-
+    let (query_time, positive_count) = run_queries(&bloom, query_keys);
+    let (fp_rate, true_negatives, false_positives) =
+        calculate_fp_rate(&bloom, query_keys, inserted_set);
     let actual_bits_per_key = bloom.bits_per_key(NUM_KEYS);
 
-    let query_throughput = NUM_QUERIES as f64 / query_time.as_secs_f64();
-
-    println!("  Bloom Filter:");
-    println!(
-        "    Construction: {:?} ({:.3}M ops/s)",
+    print_benchmark_results(
+        "Bloom",
         construct_time,
-        (NUM_KEYS as f64 / construct_time.as_secs_f64()) / 1e6
-    );
-    println!(
-        "    Query: {:?} ({:.3}M ops/s)",
         query_time,
-        query_throughput / 1e6
-    );
-    println!("    Positive queries: {} / {}", positive_count, NUM_QUERIES);
-    println!(
-        "    False positives: {} / {} ({:.6}%)",
+        positive_count,
         false_positives,
         true_negatives,
-        fp_rate * 100.0
+        fp_rate,
+        actual_bits_per_key,
+        bloom.size_in_bits(),
+        &format!("{} hash functions", num_hashes),
     );
-    println!(
-        "    Space: {:.1} MB ({:.1} bits/key)",
-        (bloom.size_in_bits() as f64 / 8.0) / (1024.0 * 1024.0),
-        actual_bits_per_key
-    );
-    println!("    Parameters: {} hash functions", num_hashes);
 
     (fp_rate, actual_bits_per_key)
 }
@@ -249,7 +293,6 @@ fn benchmark_cuckoo(
     rng: &mut impl Rng,
 ) -> (f64, f64) {
     let items_per_bucket = 4;
-    // load factor of 0.955
     let load_factor = 0.955;
     let num_buckets = ((NUM_KEYS as f64 / load_factor / items_per_bucket as f64).ceil() as usize)
         .next_power_of_two();
@@ -257,17 +300,6 @@ fn benchmark_cuckoo(
     let fingerprint_bits =
         (NUM_KEYS as f64 * bits_per_key / num_buckets as f64 / items_per_bucket as f64).ceil()
             as usize;
-
-    // Create hash function that takes a seed using MurmurHash3 finalizer
-    fn hash_with_seed(item: &u64, seed: u64) -> u64 {
-        let mut h = seed.wrapping_add(*item);
-        h ^= h >> 33;
-        h = h.wrapping_mul(0xff51afd7ed558ccd);
-        h ^= h >> 33;
-        h = h.wrapping_mul(0xc4ceb9fe1a85ec53);
-        h ^= h >> 33;
-        h
-    }
 
     let seed: u64 = rng.random();
     let hash = move |item: &u64| -> u64 { hash_with_seed(item, seed) };
@@ -291,21 +323,13 @@ fn benchmark_cuckoo(
             alt_index,
             fingerprint_bits as usize,
         );
-        let mut insert_failures = 0usize;
-        for key in inserted_keys {
-            if !cuckoo.insert(key) {
-                insert_failures += 1;
-                break;
-            }
-        }
+        let insert_failures = inserted_keys.iter().any(|&key| !cuckoo.insert(&key));
         let construct_time = start.elapsed();
 
-        if insert_failures > 0 {
-            // retry
+        if insert_failures {
             continue;
         }
 
-        // Validate that all inserted keys are positive (contains returns true)
         assert!(
             inserted_keys.iter().all(|&k| cuckoo.contains(&k)),
             "Cuckoo filter: all inserted keys should return true for contains()"
@@ -313,63 +337,25 @@ fn benchmark_cuckoo(
         break (cuckoo, construct_time);
     };
 
-    let start = Instant::now();
-    let mut positive_count = 0usize;
-    for key in query_keys {
-        if cuckoo.contains(key) {
-            positive_count += 1;
-        }
-    }
-    let query_time = start.elapsed();
-
-    let mut true_negatives = 0usize;
-    let mut false_positives = 0usize;
-    for key in query_keys {
-        let is_actually_in = inserted_set.contains(key);
-        let is_reported_in = cuckoo.contains(key);
-        if !is_actually_in {
-            true_negatives += 1;
-            if is_reported_in {
-                false_positives += 1;
-            }
-        }
-    }
-    let fp_rate = if true_negatives > 0 {
-        false_positives as f64 / true_negatives as f64
-    } else {
-        0.0
-    };
-
+    let (query_time, positive_count) = run_queries(&cuckoo, query_keys);
+    let (fp_rate, true_negatives, false_positives) =
+        calculate_fp_rate(&cuckoo, query_keys, inserted_set);
     let actual_bits_per_key = cuckoo.bits_per_key(NUM_KEYS);
 
-    let query_throughput = NUM_QUERIES as f64 / query_time.as_secs_f64();
-
-    println!("  Cuckoo Filter:");
-    println!(
-        "    Construction: {:?} ({:.3}M ops/s)",
+    print_benchmark_results(
+        "Cuckoo",
         construct_time,
-        (NUM_KEYS as f64 / construct_time.as_secs_f64()) / 1e6
-    );
-    println!(
-        "    Query: {:?} ({:.3}M ops/s)",
         query_time,
-        query_throughput / 1e6
-    );
-    println!("    Positive queries: {} / {}", positive_count, NUM_QUERIES);
-    println!(
-        "    False positives: {} / {} ({:.6}%)",
+        positive_count,
         false_positives,
         true_negatives,
-        fp_rate * 100.0
-    );
-    println!(
-        "    Space: {:.1} MB ({:.1} bits/key)",
-        (cuckoo.size_in_bits() as f64 / 8.0) / (1024.0 * 1024.0),
-        actual_bits_per_key
-    );
-    println!(
-        "    Parameters: {} buckets, {} items per bucket, {} bit fingerprint, {:.3} load factor",
-        num_buckets, items_per_bucket, fingerprint_bits, actual_load_factor
+        fp_rate,
+        actual_bits_per_key,
+        cuckoo.size_in_bits(),
+        &format!(
+            "{} buckets, {} items per bucket, {} bit fingerprint, {:.3} load factor",
+            num_buckets, items_per_bucket, fingerprint_bits, actual_load_factor
+        ),
     );
 
     (fp_rate, actual_bits_per_key)
@@ -381,8 +367,6 @@ fn benchmark_xor(
     inserted_set: &HashSet<u64>,
     bits_per_key: f64,
 ) -> (f64, f64) {
-    // Calculate effective_bits from target bits per key
-    // Effective bits determines fingerprint size used for space calculation
     let effective_bits = (bits_per_key / 1.23).ceil() as usize;
 
     let hash = move |item: &u64, seed: u64| -> usize { (*item ^ seed) as usize };
@@ -398,65 +382,27 @@ fn benchmark_xor(
     );
     let construct_time = start.elapsed();
 
-    // Validate that all inserted keys are positive (contains returns true)
     assert!(
         inserted_keys.iter().all(|&k| xor.contains(&k)),
         "XOR filter: all inserted keys should return true for contains()"
     );
 
-    let start = Instant::now();
-    let mut positive_count = 0usize;
-    for key in query_keys {
-        if xor.contains(key) {
-            positive_count += 1;
-        }
-    }
-    let query_time = start.elapsed();
-
-    let mut true_negatives = 0usize;
-    let mut false_positives = 0usize;
-    for key in query_keys {
-        let is_actually_in = inserted_set.contains(key);
-        let is_reported_in = xor.contains(key);
-        if !is_actually_in {
-            true_negatives += 1;
-            if is_reported_in {
-                false_positives += 1;
-            }
-        }
-    }
-    let fp_rate = if true_negatives > 0 {
-        false_positives as f64 / true_negatives as f64
-    } else {
-        0.0
-    };
-
+    let (query_time, positive_count) = run_queries(&xor, query_keys);
+    let (fp_rate, true_negatives, false_positives) =
+        calculate_fp_rate(&xor, query_keys, inserted_set);
     let actual_bits_per_key = xor.bits_per_key(NUM_KEYS);
 
-    let query_throughput = NUM_QUERIES as f64 / query_time.as_secs_f64();
-
-    println!("  XOR Filter:");
-    println!(
-        "    Construction: {:?} ({:.3}M ops/s)",
+    print_benchmark_results(
+        "XOR",
         construct_time,
-        (NUM_KEYS as f64 / construct_time.as_secs_f64()) / 1e6
-    );
-    println!(
-        "    Query: {:?} ({:.3}M ops/s)",
         query_time,
-        query_throughput / 1e6
-    );
-    println!("    Positive queries: {} / {}", positive_count, NUM_QUERIES);
-    println!(
-        "    False positives: {} / {} ({:.6}%)",
+        positive_count,
         false_positives,
         true_negatives,
-        fp_rate * 100.0
-    );
-    println!(
-        "    Space: {:.1} MB ({:.1} bits/key)",
-        (xor.size_in_bits() as f64 / 8.0) / (1024.0 * 1024.0),
-        actual_bits_per_key
+        fp_rate,
+        actual_bits_per_key,
+        xor.size_in_bits(),
+        &format!("{} bit fingerprint", effective_bits),
     );
 
     (fp_rate, actual_bits_per_key)
