@@ -1,5 +1,7 @@
 use crate::traits::{Constructible, ProbabilisticFilter};
+use num_traits::Zero;
 use std::collections::VecDeque;
+use std::ops::BitXor;
 
 /// An XOR filter is a probabilistic data structure that supports membership testing.
 /// It is constructed in one pass from a set of items and cannot be modified afterward.
@@ -17,7 +19,7 @@ use std::collections::VecDeque;
 /// * Thomas Mueller Graf and Daniel Lemire. 2020. Xor Filters: Faster and Smaller Than Bloom and Cuckoo Filters. ACM J. Exp. Algorithmics 25, Article 1.5 (2020), 16 pages. https://doi.org/10.1145/3376122
 pub struct XorFilter<T, F, H0, H1, H2, FP>
 where
-    F: Copy + PartialEq,
+    F: Copy + PartialEq + Zero + BitXor<Output = F>,
     H0: Fn(&T) -> usize,
     H1: Fn(&T) -> usize,
     H2: Fn(&T) -> usize,
@@ -34,7 +36,7 @@ where
 
 impl<T, F, H0, H1, H2, FP> XorFilter<T, F, H0, H1, H2, FP>
 where
-    F: Copy + PartialEq + Zero + BitXor,
+    F: Copy + PartialEq + Zero + BitXor<Output = F>,
     H0: Fn(&T) -> usize,
     H1: Fn(&T) -> usize,
     H2: Fn(&T) -> usize,
@@ -145,10 +147,8 @@ where
 
             // Since fingerprints[pos] starts at 0, we get f XOR fp[idx0] XOR fp[idx1] XOR fp[idx2]
             // XOR with zero is identity, so this correctly computes the needed value
-            fingerprints[pos] = fingerprint
-                .bit_xor(fingerprints[idx0])
-                .bit_xor(fingerprints[idx1])
-                .bit_xor(fingerprints[idx2]);
+            fingerprints[pos] =
+                fingerprint ^ fingerprints[idx0] ^ fingerprints[idx1] ^ fingerprints[idx2];
         }
 
         XorFilter {
@@ -189,7 +189,7 @@ fn check_positions_for_queue(
 
 impl<T, F, H0, H1, H2, FP> ProbabilisticFilter<T> for XorFilter<T, F, H0, H1, H2, FP>
 where
-    F: Copy + PartialEq + BitXor,
+    F: Copy + PartialEq + Zero + BitXor<Output = F>,
     H0: Fn(&T) -> usize,
     H1: Fn(&T) -> usize,
     H2: Fn(&T) -> usize,
@@ -202,74 +202,14 @@ where
         let idx1 = (self.hash1)(item) % self.array_size;
         let idx2 = (self.hash2)(item) % self.array_size;
 
-        let xored = self.fingerprints[idx0]
-            .bit_xor(self.fingerprints[idx1])
-            .bit_xor(self.fingerprints[idx2]);
+        let xored = self.fingerprints[idx0] ^ self.fingerprints[idx1] ^ self.fingerprints[idx2];
         xored == fingerprint
-    }
-}
-
-// Helper trait for default zero value of fingerprint type
-pub trait Zero {
-    fn zero() -> Self;
-}
-
-impl Zero for u8 {
-    fn zero() -> Self {
-        0
-    }
-}
-
-impl Zero for u16 {
-    fn zero() -> Self {
-        0
-    }
-}
-
-impl Zero for u32 {
-    fn zero() -> Self {
-        0
-    }
-}
-
-impl Zero for u64 {
-    fn zero() -> Self {
-        0
-    }
-}
-
-// Helper trait for XOR operation on fingerprint type
-pub trait BitXor<Rhs = Self> {
-    fn bit_xor(self, rhs: Rhs) -> Self;
-}
-
-impl BitXor for u8 {
-    fn bit_xor(self, rhs: Self) -> Self {
-        self ^ rhs
-    }
-}
-
-impl BitXor for u16 {
-    fn bit_xor(self, rhs: Self) -> Self {
-        self ^ rhs
-    }
-}
-
-impl BitXor for u32 {
-    fn bit_xor(self, rhs: Self) -> Self {
-        self ^ rhs
-    }
-}
-
-impl BitXor for u64 {
-    fn bit_xor(self, rhs: Self) -> Self {
-        self ^ rhs
     }
 }
 
 impl<T, F, H0, H1, H2, FP> Constructible<T> for XorFilter<T, F, H0, H1, H2, FP>
 where
-    F: Copy + PartialEq + Zero + BitXor,
+    F: Copy + PartialEq + Zero + BitXor<Output = F>,
     H0: Fn(&T) -> usize,
     H1: Fn(&T) -> usize,
     H2: Fn(&T) -> usize,
