@@ -205,6 +205,10 @@ where
         let xored = self.fingerprints[idx0] ^ self.fingerprints[idx1] ^ self.fingerprints[idx2];
         xored == fingerprint
     }
+
+    fn size_in_bits(&self) -> usize {
+        self.fingerprints.len() * std::mem::size_of::<F>() * 8
+    }
 }
 
 impl<T, F, H0, H1, H2, FP> Constructible<T> for XorFilter<T, F, H0, H1, H2, FP>

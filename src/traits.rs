@@ -4,6 +4,18 @@ pub trait ProbabilisticFilter<T> {
     /// Returns false if the item is definitely not in the filter.
     /// Returns true if the item is probably in the filter (with some false positive rate).
     fn contains(&self, item: &T) -> bool;
+
+    /// Get the actual space usage of the filter in bits.
+    fn size_in_bits(&self) -> usize;
+
+    /// Get the actual bits per key, assuming `num_keys` items were inserted.
+    fn bits_per_key(&self, num_keys: usize) -> f64 {
+        if num_keys == 0 {
+            0.0
+        } else {
+            self.size_in_bits() as f64 / num_keys as f64
+        }
+    }
 }
 
 /// Trait for filters that support insertion.

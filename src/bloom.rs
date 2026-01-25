@@ -94,6 +94,10 @@ where
         }
         true
     }
+
+    fn size_in_bits(&self) -> usize {
+        self.bits.len()
+    }
 }
 
 impl<T, H> Insertable<T> for BloomFilter<T, H>

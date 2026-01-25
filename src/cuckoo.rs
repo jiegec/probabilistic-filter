@@ -140,6 +140,11 @@ where
 
         self.find_in_bucket(index, fingerprint) || self.find_in_bucket(alt_index, fingerprint)
     }
+
+    fn size_in_bits(&self) -> usize {
+        // one extra bit for Option
+        self.buckets.len() * (std::mem::size_of::<F>() * 8 + 1)
+    }
 }
 
 impl<T, F, H, FP, AI> Insertable<T> for CuckooFilter<T, F, H, FP, AI>
