@@ -92,7 +92,8 @@ where
         loop {
             // Build a map from position to list of items that use this position
             // Each entry is (item_index, other_position_1, other_position_2)
-            let mut pos_to_items: Vec<Vec<(usize, usize, usize)>> = vec![Vec::new(); array_size];
+            // Use SetQuery to optimize allocation away
+            let mut pos_to_items: Vec<SetQuery> = vec![SetQuery::new(); array_size];
 
             let seed0 = rng.random::<u64>();
             let seed1 = rng.random::<u64>();
@@ -125,17 +126,17 @@ where
                 let idx1 = (hash1)(item);
                 let idx2 = (hash2)(item);
 
-                pos_to_items[idx0].push((item_idx, idx1, idx2));
-                pos_to_items[idx1].push((item_idx, idx0, idx2));
-                pos_to_items[idx2].push((item_idx, idx0, idx1));
+                pos_to_items[idx0].insert(item_idx);
+                pos_to_items[idx1].insert(item_idx);
+                pos_to_items[idx2].insert(item_idx);
             }
 
             // Graph peeling: process items that have at least one available position
             let mut queue: VecDeque<usize> = VecDeque::new();
             let mut in_queue: Vec<bool> = vec![false; array_size];
 
-            // Stack to store (item_idx, pos, other1, other2) for reconstruction
-            let mut stack: Vec<(usize, usize, usize, usize)> = Vec::new();
+            // Stack to store (item_idx, pos, idx0, idx1, idx2) for reconstruction
+            let mut stack: Vec<(usize, usize, usize, usize, usize)> = Vec::new();
 
             // Find initial positions with exactly one item
             for (pos, items) in pos_to_items.iter().enumerate().take(array_size) {
@@ -155,19 +156,32 @@ where
                 }
 
                 // Get the only item at this position
-                let (item_idx, other1, other2) = pos_to_items[pos][0];
+                let (item_idx,) = pos_to_items[pos].query();
+
+                // Compute indices again
+                let item = &items[item_idx];
+                let idx0 = (hash0)(item);
+                let idx1 = (hash1)(item);
+                let idx2 = (hash2)(item);
 
                 // Push to stack for later reconstruction
-                // Store (item_idx, pos, other1, other2) where pos is where we'll store fingerprint
-                stack.push((item_idx, pos, other1, other2));
+                // Store (item_idx, pos, idx1, idx2, idx3) where pos is where we'll store fingerprint
+                stack.push((item_idx, pos, idx0, idx1, idx2));
 
                 // Remove this item from all its positions
-                remove_item_from_position(&mut pos_to_items, pos, item_idx);
-                remove_item_from_position(&mut pos_to_items, other1, item_idx);
-                remove_item_from_position(&mut pos_to_items, other2, item_idx);
+                remove_item_from_position(&mut pos_to_items, idx0, item_idx);
+                remove_item_from_position(&mut pos_to_items, idx1, item_idx);
+                remove_item_from_position(&mut pos_to_items, idx2, item_idx);
 
                 // Check if any positions now have exactly one item
-                check_positions_for_queue(&pos_to_items, &mut queue, &mut in_queue, other1, other2);
+                check_positions_for_queue(
+                    &pos_to_items,
+                    &mut queue,
+                    &mut in_queue,
+                    idx0,
+                    idx1,
+                    idx2,
+                );
             }
 
             if stack.len() != num_items {
@@ -176,14 +190,14 @@ where
             }
 
             // Reconstruct fingerprints in reverse peeling order
-            while let Some((item_idx, pos, other1, other2)) = stack.pop() {
+            while let Some((item_idx, pos, idx0, idx1, idx2)) = stack.pop() {
                 let item = &items[item_idx];
                 let fingerprint = Self::get_fingerprint(&fingerprint_func, effective_bits, item);
 
                 // Since fingerprints[pos] starts at 0, we get f XOR fp[idx0] XOR fp[idx1] XOR fp[idx2]
                 // XOR with zero is identity, so this correctly computes the needed value
                 fingerprints[pos] =
-                    fingerprint ^ fingerprints[pos] ^ fingerprints[other1] ^ fingerprints[other2];
+                    fingerprint ^ fingerprints[idx0] ^ fingerprints[idx1] ^ fingerprints[idx2];
             }
             return XorFilter {
                 array_size,
@@ -213,22 +227,54 @@ where
     }
 }
 
-fn remove_item_from_position(
-    pos_to_items: &mut [Vec<(usize, usize, usize)>],
-    pos: usize,
-    item_idx: usize,
-) {
-    pos_to_items[pos].retain(|&(idx, _, _)| idx != item_idx);
+#[derive(Clone)]
+struct SetQuery {
+    count: usize,
+    field0: usize,
+}
+
+impl SetQuery {
+    fn new() -> Self {
+        SetQuery {
+            count: 0,
+            field0: 0,
+        }
+    }
+
+    fn insert(&mut self, field0: usize) {
+        self.count += 1;
+        self.field0 ^= field0;
+    }
+
+    fn remove(&mut self, field0: usize) {
+        assert!(self.count > 0);
+        self.count -= 1;
+        self.field0 ^= field0;
+    }
+
+    fn query(&self) -> (usize,) {
+        assert!(self.count == 1);
+        (self.field0,)
+    }
+
+    fn len(&self) -> usize {
+        self.count
+    }
+}
+
+fn remove_item_from_position(pos_to_items: &mut [SetQuery], pos: usize, item_idx: usize) {
+    pos_to_items[pos].remove(item_idx);
 }
 
 fn check_positions_for_queue(
-    pos_to_items: &[Vec<(usize, usize, usize)>],
+    pos_to_items: &[SetQuery],
     queue: &mut VecDeque<usize>,
     in_queue: &mut [bool],
     idx0: usize,
     idx1: usize,
+    idx2: usize,
 ) {
-    for pos in [idx0, idx1] {
+    for pos in [idx0, idx1, idx2] {
         if pos_to_items[pos].len() == 1 && !in_queue[pos] {
             in_queue[pos] = true;
             queue.push_back(pos);
