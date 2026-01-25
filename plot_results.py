@@ -69,9 +69,51 @@ if len(cuckoo_x) > 1:
 if len(xor_x) > 1:
     ax.plot(xor_x, xor_y, c="green", alpha=0.5, linestyle="--")
 
+# Plot theoretical curves
+# Generate false positive rates from 1e-5 to 1e-1
+eps_theoretical = np.logspace(-5, -1, 100)
+
+# Theoretical formulas:
+# Bloom: bits_per_key = 1.44 * log2(1/ε)
+# Cuckoo: bits_per_key = (log2(1/ε) + 3) / 0.955
+# XOR: bits_per_key = 1.23 * log2(1/ε)
+
+log2_eps = np.log2(eps_theoretical)
+theoretical_bloom = 1.44 * (-log2_eps)
+theoretical_cuckoo = (-log2_eps + 3) / 0.955
+theoretical_xor = 1.23 * (-log2_eps)
+
+ax.plot(
+    theoretical_bloom,
+    eps_theoretical,
+    c="blue",
+    alpha=0.8,
+    linestyle="-.",
+    linewidth=2,
+    label="Bloom (theoretical)",
+)
+ax.plot(
+    theoretical_cuckoo,
+    eps_theoretical,
+    c="red",
+    alpha=0.8,
+    linestyle="-.",
+    linewidth=2,
+    label="Cuckoo (theoretical)",
+)
+ax.plot(
+    theoretical_xor,
+    eps_theoretical,
+    c="green",
+    alpha=0.8,
+    linestyle="-.",
+    linewidth=2,
+    label="XOR (theoretical)",
+)
+
 # Set log scale for y axis
 ax.set_yscale("log")
-ax.set_ylim(1e-5, 1.0)
+ax.set_ylim(1e-6, 1.0)
 
 # Labels and title
 ax.set_xlabel("Space Usage (bits per key)", fontsize=12)

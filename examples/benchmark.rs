@@ -230,8 +230,8 @@ fn benchmark_cuckoo(
     rng: &mut impl Rng,
 ) -> (f64, f64) {
     let items_per_bucket = 4;
-    // load factor of 0.95
-    let load_factor = 0.95;
+    // load factor of 0.955
+    let load_factor = 0.955;
     let num_buckets = (NUM_KEYS as f64 / load_factor / items_per_bucket as f64).ceil() as usize;
     let fingerprint_bits = (NUM_KEYS as f64 * bits_per_key
         / num_buckets as f64
