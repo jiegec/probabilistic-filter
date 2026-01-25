@@ -41,10 +41,13 @@ where
     /// bloom.insert(&1);
     /// assert!(bloom.contains(&1));
     /// ```
-    pub fn new(num_bits: usize, hash_funcs: Vec<H>) -> Self {
+    pub fn new<IT>(num_bits: usize, hash_funcs: IT) -> Self
+    where
+        IT: IntoIterator<Item = H>,
+    {
         BloomFilter {
             bits: vec![false; num_bits],
-            hash_funcs,
+            hash_funcs: hash_funcs.into_iter().collect(),
             _phantom: std::marker::PhantomData,
         }
     }

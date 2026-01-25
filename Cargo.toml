@@ -8,3 +8,8 @@ num-traits = "0.2.19"
 rand = "0.9"
 
 [dev-dependencies]
+criterion = { version = "0.8", features = ["html_reports"] }
+
+[[bench]]
+name = "filters"
+harness = false

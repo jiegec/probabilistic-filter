@@ -341,8 +341,7 @@ mod tests {
         use crate::traits::Constructible;
 
         let hash = |item: &u64, seed: u64| -> usize { (*item ^ seed) as usize };
-        let fp_func =
-            |item: &u64| -> u8 { (item.wrapping_mul(0x5bd1e9955bd1e995) & 0xFF) as u8 | 1 };
+        let fp_func = |item: &u64| -> u8 { (item.wrapping_mul(0x5bd1e9955bd1e995) & 0xFF) as u8 };
         let items: Vec<u64> = vec![1, 2, 3];
         let effective_bits = 8;
 
@@ -359,8 +358,7 @@ mod tests {
         use crate::traits::Constructible;
 
         let hash = |item: &u64, seed: u64| -> usize { (*item ^ seed) as usize };
-        let fp_func =
-            |item: &u64| -> u8 { (item.wrapping_mul(0x5bd1e9955bd1e995) & 0xFF) as u8 | 1 };
+        let fp_func = |item: &u64| -> u8 { (item.wrapping_mul(0x5bd1e9955bd1e995) & 0xFF) as u8 };
         let items: Vec<u64> = vec![];
         let effective_bits = 8;
 
