@@ -1,4 +1,5 @@
 use crate::traits::{Insertable, ProbabilisticFilter};
+use fixedbitset::FixedBitSet;
 use std::hash::Hash;
 
 /// A Bloom filter is a space-efficient probabilistic data structure that supports insertion and membership testing.
@@ -14,7 +15,7 @@ pub struct BloomFilter<T, H>
 where
     H: Fn(&T) -> u64,
 {
-    bits: Vec<bool>,
+    bits: FixedBitSet,
     hash_funcs: Vec<H>,
     _phantom: std::marker::PhantomData<T>,
 }
@@ -46,7 +47,7 @@ where
         IT: IntoIterator<Item = H>,
     {
         BloomFilter {
-            bits: vec![false; num_bits],
+            bits: FixedBitSet::with_capacity(num_bits),
             hash_funcs: hash_funcs.into_iter().collect(),
             _phantom: std::marker::PhantomData,
         }
@@ -91,7 +92,7 @@ where
         for hash_func in &self.hash_funcs {
             let hash = hash_func(item);
             let idx = hash as usize % self.bits.len();
-            if !self.bits[idx] {
+            if !self.bits.contains(idx) {
                 return false;
             }
         }
@@ -112,7 +113,7 @@ where
         for hash_func in &self.hash_funcs {
             let hash = hash_func(item);
             let idx = hash as usize % self.bits.len();
-            self.bits[idx] = true;
+            self.bits.set(idx, true);
         }
         true
     }
