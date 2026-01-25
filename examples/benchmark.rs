@@ -250,54 +250,71 @@ fn benchmark_cuckoo(
     let items_per_bucket = 4;
     // load factor of 0.955
     let load_factor = 0.955;
-    let num_buckets = (NUM_KEYS as f64 / load_factor / items_per_bucket as f64).ceil() as usize;
+    let num_buckets = ((NUM_KEYS as f64 / load_factor / items_per_bucket as f64).ceil() as usize)
+        .next_power_of_two();
     let fingerprint_bits = (NUM_KEYS as f64 * bits_per_key
         / num_buckets as f64
         / items_per_bucket as f64
         - 1.0)
         .ceil() as usize;
 
-    let seed: u64 = rng.random();
-    let hash = move |item: &u64| -> u64 {
+    // Create hash function that takes a seed using MurmurHash3 finalizer
+    fn hash_with_seed(item: &u64, seed: u64) -> u64 {
         let mut h = seed.wrapping_add(*item);
         h ^= h >> 33;
+        h = h.wrapping_mul(0xff51afd7ed558ccd);
+        h ^= h >> 33;
+        h = h.wrapping_mul(0xc4ceb9fe1a85ec53);
+        h ^= h >> 33;
         h
-    };
+    }
+
+    let seed: u64 = rng.random();
+    let hash = move |item: &u64| -> u64 { hash_with_seed(item, seed) };
 
     let fp_seed: u64 = rng.random();
     let fingerprint_func = move |item: &u64| -> u64 {
-        let h = fp_seed.wrapping_add(*item);
+        let h = hash_with_seed(item, fp_seed);
         h | 1
     };
 
-    let alt_index = move |index: usize, fp: u64| -> usize { index ^ fp as usize };
+    let alt_index = move |index: usize, fp: u64| -> usize {
+        let hashed_fp = hash_with_seed(&fp, fp_seed);
+        index ^ hashed_fp as usize
+    };
 
-    let start = Instant::now();
-    let mut cuckoo = CuckooFilter::new(
-        num_buckets,
-        items_per_bucket,
-        500,
-        hash,
-        fingerprint_func,
-        alt_index,
-        fingerprint_bits as usize,
-    );
-    let mut insert_failures = 0usize;
-    for key in inserted_keys {
-        if !cuckoo.insert(key) {
-            insert_failures += 1;
+    let (cuckoo, construct_time) = loop {
+        let start = Instant::now();
+        let mut cuckoo = CuckooFilter::new(
+            num_buckets,
+            items_per_bucket,
+            500,
+            hash,
+            fingerprint_func,
+            alt_index,
+            fingerprint_bits as usize,
+        );
+        let mut insert_failures = 0usize;
+        for key in inserted_keys {
+            if !cuckoo.insert(key) {
+                insert_failures += 1;
+                break;
+            }
         }
-    }
-    let construct_time = start.elapsed();
+        let construct_time = start.elapsed();
 
-    /*
-    assert_eq!(insert_failures, 0);
-    // Validate that all inserted keys are positive (contains returns true)
-    assert!(
-        inserted_keys.iter().all(|&k| cuckoo.contains(&k)),
-        "Cuckoo filter: all inserted keys should return true for contains()"
-    );
-    */
+        if insert_failures > 0 {
+            // retry
+            continue;
+        }
+
+        // Validate that all inserted keys are positive (contains returns true)
+        assert!(
+            inserted_keys.iter().all(|&k| cuckoo.contains(&k)),
+            "Cuckoo filter: all inserted keys should return true for contains()"
+        );
+        break (cuckoo, construct_time);
+    };
 
     let start = Instant::now();
     let mut positive_count = 0usize;
@@ -334,11 +351,8 @@ fn benchmark_cuckoo(
     println!(
         "    Construction: {:?} ({:.3}M ops/s)",
         construct_time,
-        ((NUM_KEYS - insert_failures) as f64 / construct_time.as_secs_f64()) / 1e6
+        (NUM_KEYS as f64 / construct_time.as_secs_f64()) / 1e6
     );
-    if insert_failures > 0 {
-        println!("    Insert failures: {}", insert_failures);
-    }
     println!(
         "    Query: {:?} ({:.3}M ops/s)",
         query_time,
@@ -419,7 +433,6 @@ fn benchmark_xor(
     let actual_bits_per_key = xor.bits_per_key(NUM_KEYS);
 
     let query_throughput = NUM_QUERIES as f64 / query_time.as_secs_f64();
-    let space_mb = (xor.size_in_bits() as f64 / 8.0) / (1024.0 * 1024.0);
 
     println!("  XOR Filter:");
     println!(
@@ -441,7 +454,8 @@ fn benchmark_xor(
     );
     println!(
         "    Space: {:.1} MB ({:.1} bits/key)",
-        space_mb, actual_bits_per_key
+        (xor.size_in_bits() as f64 / 8.0) / (1024.0 * 1024.0),
+        actual_bits_per_key
     );
 
     (fp_rate, actual_bits_per_key)

@@ -70,8 +70,8 @@ if len(xor_x) > 1:
     ax.plot(xor_x, xor_y, c="green", alpha=0.5, linestyle="--")
 
 # Plot theoretical curves
-# Generate false positive rates from 1e-5 to 1e-1
-eps_theoretical = np.logspace(-5, -1, 100)
+# Generate false positive rates from 1e-6 to 1e-1
+eps_theoretical = np.logspace(-6, -1, 100)
 
 # Theoretical formulas:
 # Bloom: bits_per_key = 1.44 * log2(1/ε)
