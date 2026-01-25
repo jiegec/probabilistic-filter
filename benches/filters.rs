@@ -149,9 +149,7 @@ fn bench_xor_creation(c: &mut Criterion) {
 
         let hash = move |item: &u64, seed: u64| -> usize { (*item ^ seed) as usize };
 
-        let fp_mask = (1u64 << effective_bits) - 1;
-        let fingerprint_func =
-            move |item: &u64| -> u64 { (item.wrapping_mul(0x9e3779b97f4a7c15) & fp_mask) };
+        let fingerprint_func = move |item: &u64| -> u64 { item.wrapping_mul(0x9e3779b97f4a7c15) };
 
         group.throughput(Throughput::Elements(size as u64));
         group.bench_with_input(BenchmarkId::from_parameter(size), &keys, |b, keys| {
@@ -176,9 +174,7 @@ fn bench_xor_query(c: &mut Criterion) {
 
         let hash = move |item: &u64, seed: u64| -> usize { (*item ^ seed) as usize };
 
-        let fp_mask = (1u64 << effective_bits) - 1;
-        let fingerprint_func =
-            move |item: &u64| -> u64 { item.wrapping_mul(0x9e3779b97f4a7c15) & fp_mask };
+        let fingerprint_func = move |item: &u64| -> u64 { item.wrapping_mul(0x9e3779b97f4a7c15) };
 
         let filter = XorFilter::from_iter_with(
             keys.iter().copied(),

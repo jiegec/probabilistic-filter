@@ -190,7 +190,7 @@ where
             // Reconstruct fingerprints in reverse peeling order
             while let Some((item_idx, pos)) = stack.pop() {
                 let item = &items[item_idx];
-                let fingerprint = (fingerprint_func)(item);
+                let fingerprint = Self::get_fingerprint(&fingerprint_func, effective_bits, item);
 
                 // Compute indices for this item
                 let idx0 = (hash0)(item) % array_size;
@@ -214,6 +214,26 @@ where
                 _phantom: std::marker::PhantomData,
             };
         }
+    }
+
+    fn get_fingerprint(fingerprint_func: &FP, effective_bits: usize, item: &T) -> F {
+        let fp = fingerprint_func(item);
+        let masked = Self::mask_fingerprint(effective_bits, fp);
+        // Ensure non-zero fingerprint (0 does not change xor result)
+        // Only adjust if masked result is actually zero
+        if masked.is_zero() { F::one() } else { masked }
+    }
+
+    fn mask_fingerprint(effective_bits: usize, fp: F) -> F {
+        // Mask to only use effective bits
+        // For full-width effective_bits, use all ones mask
+        let full_bits = std::mem::size_of::<F>() * 8;
+        let mask = if effective_bits >= full_bits {
+            !F::zero()
+        } else {
+            (F::one() << effective_bits) - F::one()
+        };
+        fp & mask
     }
 }
 
@@ -256,7 +276,7 @@ where
     FP: Fn(&T) -> F,
 {
     fn contains(&self, item: &T) -> bool {
-        let fingerprint = (self.fingerprint_func)(item);
+        let fingerprint = Self::get_fingerprint(&self.fingerprint_func, self.effective_bits, item);
 
         // wrap three hash functions
         let array_size = self.array_size;
@@ -290,16 +310,7 @@ where
         let idx2 = (hash2)(item);
 
         let xored = self.fingerprints[idx0] ^ self.fingerprints[idx1] ^ self.fingerprints[idx2];
-
-        // Mask to only compare effective bits
-        // For full-width effective_bits, use all ones mask
-        let full_bits = std::mem::size_of::<F>() * 8;
-        let mask = if self.effective_bits >= full_bits {
-            !F::zero()
-        } else {
-            (F::one() << self.effective_bits) - F::one()
-        };
-        (xored & mask) == (fingerprint & mask)
+        xored == fingerprint
     }
 
     fn size_in_bits(&self) -> usize {

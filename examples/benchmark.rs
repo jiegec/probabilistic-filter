@@ -371,9 +371,7 @@ fn benchmark_xor(
 
     let hash = move |item: &u64, seed: u64| -> usize { (*item ^ seed) as usize };
 
-    let fp_mask = (1u64 << effective_bits) - 1;
-    let fingerprint_func =
-        move |item: &u64| -> u64 { (item.wrapping_mul(0x9e3779b97f4a7c15) & fp_mask) };
+    let fingerprint_func = move |item: &u64| -> u64 { item.wrapping_mul(0x9e3779b97f4a7c15) };
 
     let start = Instant::now();
     let xor = XorFilter::from_iter_with(
