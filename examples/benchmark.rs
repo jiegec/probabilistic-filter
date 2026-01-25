@@ -318,8 +318,10 @@ fn print_construction_results(benchmark: &FilterBenchmark) {
 
     println!("  {} Filter:", benchmark.name);
     println!(
-        "    Construction: {:?} ({:.3}M ops/s)",
-        benchmark.construct_time, construct_throughput
+        "    Construction: {:?} ({:.3}M ops/s, {:.3} ns/op)",
+        benchmark.construct_time,
+        construct_throughput,
+        benchmark.construct_time.as_nanos() as f64 / NUM_KEYS as f64
     );
     println!(
         "    Space: {:.1} MB ({:.1} bits/key)",
