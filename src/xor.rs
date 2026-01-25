@@ -1,5 +1,6 @@
 use crate::traits::{Constructible, ProbabilisticFilter};
 use num_traits::{One, Zero};
+use rand::Rng;
 use std::collections::VecDeque;
 use std::ops::{BitAnd, BitXor, Not, Shl, Sub};
 
@@ -10,14 +11,12 @@ use std::ops::{BitAnd, BitXor, Not, Shl, Sub};
 /// # Type Parameters
 /// * `T` - The type of items stored in the filter
 /// * `F` - The fingerprint type (e.g., u8, u16)
-/// * `H0` - First hash function that computes index 0
-/// * `H1` - Second hash function that computes index 1
-/// * `H2` - Third hash function that computes index 2
+/// * `H` - The hash function that computes indices from data and seed
 /// * `FP` - Function that computes fingerprint from an item
 ///
 /// # References
 /// * Thomas Mueller Graf and Daniel Lemire. 2020. Xor Filters: Faster and Smaller Than Bloom and Cuckoo Filters. ACM J. Exp. Algorithmics 25, Article 1.5 (2020), 16 pages. https://doi.org/10.1145/3376122
-pub struct XorFilter<T, F, H0, H1, H2, FP>
+pub struct XorFilter<T, F, H, FP>
 where
     F: Copy
         + PartialEq
@@ -28,22 +27,21 @@ where
         + Not<Output = F>
         + Shl<usize, Output = F>
         + Sub<Output = F>,
-    H0: Fn(&T) -> usize,
-    H1: Fn(&T) -> usize,
-    H2: Fn(&T) -> usize,
+    H: Fn(&T, u64) -> usize,
     FP: Fn(&T) -> F,
 {
     array_size: usize,
     fingerprints: Vec<F>,
-    hash0: H0,
-    hash1: H1,
-    hash2: H2,
+    hash: H,
+    seed0: u64,
+    seed1: u64,
+    seed2: u64,
     fingerprint_func: FP,
     effective_bits: usize,
     _phantom: std::marker::PhantomData<T>,
 }
 
-impl<T, F, H0, H1, H2, FP> XorFilter<T, F, H0, H1, H2, FP>
+impl<T, F, H, FP> XorFilter<T, F, H, FP>
 where
     F: Copy
         + PartialEq
@@ -54,28 +52,17 @@ where
         + Not<Output = F>
         + Shl<usize, Output = F>
         + Sub<Output = F>,
-    H0: Fn(&T) -> usize,
-    H1: Fn(&T) -> usize,
-    H2: Fn(&T) -> usize,
+    H: Fn(&T, u64) -> usize,
     FP: Fn(&T) -> F,
 {
     /// Create a new XOR filter from an iterator of items with provided hash functions.
     ///
     /// # Arguments
     /// * `items` - Iterator of items to include in the filter
-    /// * `hash0` - First hash function to compute index 0
-    /// * `hash1` - Second hash function to compute index 1
-    /// * `hash2` - Third hash function to compute index 2
+    /// * `hash` - The hash function to compute indices
     /// * `fingerprint_func` - Function to compute fingerprint from an item
     /// * `effective_bits` - Number of bits actually used from the fingerprint type
-    pub fn new<U>(
-        items: U,
-        hash0: H0,
-        hash1: H1,
-        hash2: H2,
-        fingerprint_func: FP,
-        effective_bits: usize,
-    ) -> Self
+    pub fn new<U>(items: U, hash: H, fingerprint_func: FP, effective_bits: usize) -> Self
     where
         U: IntoIterator<Item = T>,
     {
@@ -86,9 +73,10 @@ where
             return XorFilter {
                 array_size: 32,
                 fingerprints: vec![F::zero(); 32],
-                hash0,
-                hash1,
-                hash2,
+                hash,
+                seed0: 0,
+                seed1: 0,
+                seed2: 0,
                 fingerprint_func,
                 effective_bits,
                 _phantom: std::marker::PhantomData,
@@ -98,92 +86,133 @@ where
         // Calculate array size: 1.23 * num_items + 32
         let array_size = ((num_items as f64 * 1.23 + 32.0).ceil()) as usize;
         let mut fingerprints = vec![F::zero(); array_size];
+        let mut rng = rand::rng();
 
-        // Build a map from position to list of items that use this position
-        // Each entry is (item_index, other_position_1, other_position_2)
-        let mut pos_to_items: Vec<Vec<(usize, usize, usize)>> = vec![Vec::new(); array_size];
+        loop {
+            // Build a map from position to list of items that use this position
+            // Each entry is (item_index, other_position_1, other_position_2)
+            let mut pos_to_items: Vec<Vec<(usize, usize, usize)>> = vec![Vec::new(); array_size];
 
-        for (item_idx, item) in items.iter().enumerate() {
-            let idx0 = (hash0)(item) % array_size;
-            let idx1 = (hash1)(item) % array_size;
-            let idx2 = (hash2)(item) % array_size;
+            let seed0 = rng.random::<u64>();
+            let seed1 = rng.random::<u64>();
+            let seed2 = rng.random::<u64>();
 
-            pos_to_items[idx0].push((item_idx, idx1, idx2));
-            pos_to_items[idx1].push((item_idx, idx0, idx2));
-            pos_to_items[idx2].push((item_idx, idx0, idx1));
-        }
+            // wrap three hash functions
+            let third_size = array_size / 3;
+            let two_thirds_size = 2 * third_size;
 
-        // Graph peeling: process items that have at least one available position
-        let mut queue: VecDeque<usize> = VecDeque::new();
-        let mut in_queue: Vec<bool> = vec![false; array_size];
+            let hash0 = |item: &T| -> usize {
+                let hash = hash(item, seed0);
+                let idx = hash % third_size;
+                idx
+            };
 
-        // Stack to store (item_idx, pos) for reconstruction
-        let mut stack: Vec<(usize, usize)> = Vec::new();
+            let hash1 = |item: &T| -> usize {
+                let hash = hash(item, seed1);
+                let idx = third_size + (hash % third_size);
+                idx
+            };
 
-        // Find initial positions with exactly one item
-        for (pos, items) in pos_to_items.iter().enumerate().take(array_size) {
-            if items.len() == 1 && !in_queue[pos] {
-                in_queue[pos] = true;
-                queue.push_back(pos);
+            let hash2 = |item: &T| -> usize {
+                let hash = hash(item, seed2);
+                let idx = two_thirds_size + (hash % (array_size - two_thirds_size));
+                idx
+            };
+
+            for (item_idx, item) in items.iter().enumerate() {
+                let idx0 = (hash0)(item);
+                let idx1 = (hash1)(item);
+                let idx2 = (hash2)(item);
+
+                pos_to_items[idx0].push((item_idx, idx1, idx2));
+                pos_to_items[idx1].push((item_idx, idx0, idx2));
+                pos_to_items[idx2].push((item_idx, idx0, idx1));
             }
-        }
 
-        // Process positions from queue
-        while let Some(pos) = queue.pop_front() {
-            in_queue[pos] = false;
+            // Graph peeling: process items that have at least one available position
+            let mut queue: VecDeque<usize> = VecDeque::new();
+            let mut in_queue: Vec<bool> = vec![false; array_size];
 
-            // Skip if position no longer has exactly one item
-            if pos_to_items[pos].len() != 1 {
+            // Stack to store (item_idx, pos) for reconstruction
+            let mut stack: Vec<(usize, usize)> = Vec::new();
+
+            // Find initial positions with exactly one item
+            for (pos, items) in pos_to_items.iter().enumerate().take(array_size) {
+                if items.len() == 1 && !in_queue[pos] {
+                    in_queue[pos] = true;
+                    queue.push_back(pos);
+                }
+            }
+
+            // Process positions from queue
+            while let Some(pos) = queue.pop_front() {
+                in_queue[pos] = false;
+
+                // Skip if position no longer has exactly one item
+                if pos_to_items[pos].len() != 1 {
+                    continue;
+                }
+
+                // Get the only item at this position
+                let (item_idx, _, _) = pos_to_items[pos][0];
+                let item = &items[item_idx];
+
+                // Compute indices for this item
+                let idx0 = (hash0)(item) % array_size;
+                let idx1 = (hash1)(item) % array_size;
+                let idx2 = (hash2)(item) % array_size;
+
+                // Push to stack for later reconstruction
+                // Store (item_idx, pos) where pos is where we'll store fingerprint
+                stack.push((item_idx, pos));
+
+                // Remove this item from all its positions
+                remove_item_from_position(&mut pos_to_items, idx0, item_idx);
+                remove_item_from_position(&mut pos_to_items, idx1, item_idx);
+                remove_item_from_position(&mut pos_to_items, idx2, item_idx);
+
+                // Check if any positions now have exactly one item
+                check_positions_for_queue(
+                    &pos_to_items,
+                    &mut queue,
+                    &mut in_queue,
+                    idx0,
+                    idx1,
+                    idx2,
+                );
+            }
+
+            if stack.len() != num_items {
+                // try again
                 continue;
             }
 
-            // Get the only item at this position
-            let (item_idx, _, _) = pos_to_items[pos][0];
-            let item = &items[item_idx];
+            // Reconstruct fingerprints in reverse peeling order
+            while let Some((item_idx, pos)) = stack.pop() {
+                let item = &items[item_idx];
+                let fingerprint = (fingerprint_func)(item);
 
-            // Compute indices for this item
-            let idx0 = (hash0)(item) % array_size;
-            let idx1 = (hash1)(item) % array_size;
-            let idx2 = (hash2)(item) % array_size;
+                // Compute indices for this item
+                let idx0 = (hash0)(item) % array_size;
+                let idx1 = (hash1)(item) % array_size;
+                let idx2 = (hash2)(item) % array_size;
 
-            // Push to stack for later reconstruction
-            // Store (item_idx, pos) where pos is where we'll store fingerprint
-            stack.push((item_idx, pos));
-
-            // Remove this item from all its positions
-            remove_item_from_position(&mut pos_to_items, idx0, item_idx);
-            remove_item_from_position(&mut pos_to_items, idx1, item_idx);
-            remove_item_from_position(&mut pos_to_items, idx2, item_idx);
-
-            // Check if any positions now have exactly one item
-            check_positions_for_queue(&pos_to_items, &mut queue, &mut in_queue, idx0, idx1, idx2);
-        }
-
-        // Reconstruct fingerprints in reverse peeling order
-        while let Some((item_idx, pos)) = stack.pop() {
-            let item = &items[item_idx];
-            let fingerprint = (fingerprint_func)(item);
-
-            // Compute indices for this item
-            let idx0 = (hash0)(item) % array_size;
-            let idx1 = (hash1)(item) % array_size;
-            let idx2 = (hash2)(item) % array_size;
-
-            // Since fingerprints[pos] starts at 0, we get f XOR fp[idx0] XOR fp[idx1] XOR fp[idx2]
-            // XOR with zero is identity, so this correctly computes the needed value
-            fingerprints[pos] =
-                fingerprint ^ fingerprints[idx0] ^ fingerprints[idx1] ^ fingerprints[idx2];
-        }
-
-        XorFilter {
-            array_size,
-            fingerprints,
-            hash0,
-            hash1,
-            hash2,
-            fingerprint_func,
-            effective_bits,
-            _phantom: std::marker::PhantomData,
+                // Since fingerprints[pos] starts at 0, we get f XOR fp[idx0] XOR fp[idx1] XOR fp[idx2]
+                // XOR with zero is identity, so this correctly computes the needed value
+                fingerprints[pos] =
+                    fingerprint ^ fingerprints[idx0] ^ fingerprints[idx1] ^ fingerprints[idx2];
+            }
+            return XorFilter {
+                array_size,
+                fingerprints,
+                hash,
+                seed0,
+                seed1,
+                seed2,
+                fingerprint_func,
+                effective_bits,
+                _phantom: std::marker::PhantomData,
+            };
         }
     }
 }
@@ -212,7 +241,7 @@ fn check_positions_for_queue(
     }
 }
 
-impl<T, F, H0, H1, H2, FP> ProbabilisticFilter<T> for XorFilter<T, F, H0, H1, H2, FP>
+impl<T, F, H, FP> ProbabilisticFilter<T> for XorFilter<T, F, H, FP>
 where
     F: Copy
         + PartialEq
@@ -223,17 +252,42 @@ where
         + Not<Output = F>
         + Shl<usize, Output = F>
         + Sub<Output = F>,
-    H0: Fn(&T) -> usize,
-    H1: Fn(&T) -> usize,
-    H2: Fn(&T) -> usize,
+    H: Fn(&T, u64) -> usize,
     FP: Fn(&T) -> F,
 {
     fn contains(&self, item: &T) -> bool {
         let fingerprint = (self.fingerprint_func)(item);
 
-        let idx0 = (self.hash0)(item) % self.array_size;
-        let idx1 = (self.hash1)(item) % self.array_size;
-        let idx2 = (self.hash2)(item) % self.array_size;
+        // wrap three hash functions
+        let array_size = self.array_size;
+        let hash = &self.hash;
+        let seed0 = self.seed0;
+        let seed1 = self.seed1;
+        let seed2 = self.seed2;
+        let third_size = array_size / 3;
+        let two_thirds_size = 2 * third_size;
+
+        let hash0 = |item: &T| -> usize {
+            let hash = hash(item, seed0);
+            let idx = hash % third_size;
+            idx
+        };
+
+        let hash1 = |item: &T| -> usize {
+            let hash = hash(item, seed1);
+            let idx = third_size + (hash % third_size);
+            idx
+        };
+
+        let hash2 = |item: &T| -> usize {
+            let hash = hash(item, seed2);
+            let idx = two_thirds_size + (hash % (array_size - two_thirds_size));
+            idx
+        };
+
+        let idx0 = (hash0)(item);
+        let idx1 = (hash1)(item);
+        let idx2 = (hash2)(item);
 
         let xored = self.fingerprints[idx0] ^ self.fingerprints[idx1] ^ self.fingerprints[idx2];
 
@@ -253,7 +307,7 @@ where
     }
 }
 
-impl<T, F, H0, H1, H2, FP> Constructible<T> for XorFilter<T, F, H0, H1, H2, FP>
+impl<T, F, H, FP> Constructible<T> for XorFilter<T, F, H, FP>
 where
     F: Copy
         + PartialEq
@@ -264,19 +318,17 @@ where
         + Not<Output = F>
         + Shl<usize, Output = F>
         + Sub<Output = F>,
-    H0: Fn(&T) -> usize,
-    H1: Fn(&T) -> usize,
-    H2: Fn(&T) -> usize,
+    H: Fn(&T, u64) -> usize,
     FP: Fn(&T) -> F,
 {
-    type Config = (H0, H1, H2, FP, usize);
+    type Config = (H, FP, usize);
 
     fn from_iter_with<U>(items: U, config: Self::Config) -> Self
     where
         Self: Sized,
         U: IntoIterator<Item = T>,
     {
-        Self::new(items, config.0, config.1, config.2, config.3, config.4)
+        Self::new(items, config.0, config.1, config.2)
     }
 }
 
@@ -288,15 +340,13 @@ mod tests {
     fn test_xor_filter_basic() {
         use crate::traits::Constructible;
 
-        let hash0 = |item: &u64| -> usize { item.wrapping_mul(0x5bd1e9955bd1e995) as usize };
-        let hash1 = |item: &u64| -> usize { item.wrapping_mul(0x9e3779b97f4a7c1) as usize };
-        let hash2 = |item: &u64| -> usize { item.wrapping_mul(0xc13fa9a902a6328f) as usize };
+        let hash = |item: &u64, seed: u64| -> usize { (*item ^ seed) as usize };
         let fp_func =
             |item: &u64| -> u8 { (item.wrapping_mul(0x5bd1e9955bd1e995) & 0xFF) as u8 | 1 };
         let items: Vec<u64> = vec![1, 2, 3];
         let effective_bits = 8;
 
-        let xor = XorFilter::from_iter_with(items, (hash0, hash1, hash2, fp_func, effective_bits));
+        let xor = XorFilter::from_iter_with(items, (hash, fp_func, effective_bits));
 
         assert!(xor.contains(&1));
         assert!(xor.contains(&2));
@@ -308,15 +358,13 @@ mod tests {
     fn test_xor_filter_empty() {
         use crate::traits::Constructible;
 
-        let hash0 = |item: &u64| -> usize { item.wrapping_mul(0x5bd1e9955bd1e995) as usize };
-        let hash1 = |item: &u64| -> usize { item.wrapping_mul(0x9e3779b97f4a7c1) as usize };
-        let hash2 = |item: &u64| -> usize { item.wrapping_mul(0xc13fa9a902a6328f) as usize };
+        let hash = |item: &u64, seed: u64| -> usize { (*item ^ seed) as usize };
         let fp_func =
             |item: &u64| -> u8 { (item.wrapping_mul(0x5bd1e9955bd1e995) & 0xFF) as u8 | 1 };
         let items: Vec<u64> = vec![];
         let effective_bits = 8;
 
-        let xor = XorFilter::from_iter_with(items, (hash0, hash1, hash2, fp_func, effective_bits));
+        let xor = XorFilter::from_iter_with(items, (hash, fp_func, effective_bits));
 
         assert!(!xor.contains(&1));
     }

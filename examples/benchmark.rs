@@ -34,7 +34,7 @@ fn main() {
 
     println!("Generated {} unique keys\n", inserted_keys.len());
 
-    let bits_per_keys = vec![8.0, 12.0, 16.0, 20.0, 24.0];
+    let bits_per_keys = vec![8.0, 10.0, 12.0, 14.0, 16.0, 18.0, 20.0];
     let mut all_results: Vec<BenchmarkResult> = Vec::new();
 
     for &bits_per_key in &bits_per_keys {
@@ -243,11 +243,7 @@ fn benchmark_cuckoo(
         ((h & 0xFF) | 1) as u8
     };
 
-    let alt_seed: u64 = rng.random();
-    let alt_index = move |index: usize, fp: u8| -> usize {
-        let h = alt_seed.wrapping_add(index as u64).wrapping_add(fp as u64);
-        h as usize
-    };
+    let alt_index = move |index: usize, fp: u8| -> usize { index ^ fp as usize };
 
     let start = Instant::now();
     let mut cuckoo = CuckooFilter::new(num_buckets, 4, 500, hash, fingerprint_func, alt_index);
@@ -330,13 +326,7 @@ fn benchmark_xor(
     // Effective bits determines fingerprint size used for space calculation
     let effective_bits = (bits_per_key / 1.23).ceil() as usize;
 
-    let seed0: u64 = 0x5bd1e9955bd1e995;
-    let seed1: u64 = 0x9e3779b97f4a7c1;
-    let seed2: u64 = 0xc13fa9a902a6328f;
-
-    let hash0 = move |item: &u64| -> usize { item.wrapping_mul(seed0) as usize };
-    let hash1 = move |item: &u64| -> usize { item.wrapping_mul(seed1) as usize };
-    let hash2 = move |item: &u64| -> usize { item.wrapping_mul(seed2) as usize };
+    let hash = move |item: &u64, seed: u64| -> usize { (*item ^ seed) as usize };
 
     let fp_mask = (1u64 << effective_bits) - 1;
     let fingerprint_func =
@@ -345,7 +335,7 @@ fn benchmark_xor(
     let start = Instant::now();
     let xor = XorFilter::from_iter_with(
         inserted_keys.iter().copied(),
-        (hash0, hash1, hash2, fingerprint_func, effective_bits),
+        (hash, fingerprint_func, effective_bits),
     );
     let construct_time = start.elapsed();
 
