@@ -158,6 +158,12 @@ fn benchmark_bloom(
     }
     let construct_time = start.elapsed();
 
+    // Validate that all inserted keys are positive (contains returns true)
+    assert!(
+        inserted_keys.iter().all(|&k| bloom.contains(&k)),
+        "Bloom filter: all inserted keys should return true for contains()"
+    );
+
     let start = Instant::now();
     let mut positive_count = 0usize;
     for key in query_keys {
@@ -223,12 +229,15 @@ fn benchmark_cuckoo(
     bits_per_key: f64,
     rng: &mut impl Rng,
 ) -> (f64, f64) {
-    let fingerprint_bits = 8.0;
-    let items_per_bucket = 4.0;
-    let num_buckets = ((NUM_KEYS as f64 * bits_per_key)
-        / ((fingerprint_bits + 1.0) * items_per_bucket))
-        .ceil()
-        .max(1.0) as usize;
+    let items_per_bucket = 4;
+    // load factor of 0.95
+    let load_factor = 0.95;
+    let num_buckets = (NUM_KEYS as f64 / load_factor / items_per_bucket as f64).ceil() as usize;
+    let fingerprint_bits = (NUM_KEYS as f64 * bits_per_key
+        / num_buckets as f64
+        / items_per_bucket as f64
+        - 1.0)
+        .ceil() as usize;
 
     let seed: u64 = rng.random();
     let hash = move |item: &u64| -> u64 {
@@ -238,15 +247,23 @@ fn benchmark_cuckoo(
     };
 
     let fp_seed: u64 = rng.random();
-    let fingerprint_func = move |item: &u64| -> u8 {
+    let fingerprint_func = move |item: &u64| -> u64 {
         let h = fp_seed.wrapping_add(*item);
-        ((h & 0xFF) | 1) as u8
+        h | 1
     };
 
-    let alt_index = move |index: usize, fp: u8| -> usize { index ^ fp as usize };
+    let alt_index = move |index: usize, fp: u64| -> usize { index ^ fp as usize };
 
     let start = Instant::now();
-    let mut cuckoo = CuckooFilter::new(num_buckets, 4, 500, hash, fingerprint_func, alt_index);
+    let mut cuckoo = CuckooFilter::new(
+        num_buckets,
+        items_per_bucket,
+        500,
+        hash,
+        fingerprint_func,
+        alt_index,
+        fingerprint_bits as usize,
+    );
     let mut insert_failures = 0usize;
     for key in inserted_keys {
         if !cuckoo.insert(key) {
@@ -254,6 +271,15 @@ fn benchmark_cuckoo(
         }
     }
     let construct_time = start.elapsed();
+
+    /*
+    assert_eq!(insert_failures, 0);
+    // Validate that all inserted keys are positive (contains returns true)
+    assert!(
+        inserted_keys.iter().all(|&k| cuckoo.contains(&k)),
+        "Cuckoo filter: all inserted keys should return true for contains()"
+    );
+    */
 
     let start = Instant::now();
     let mut positive_count = 0usize;
@@ -338,6 +364,12 @@ fn benchmark_xor(
         (hash, fingerprint_func, effective_bits),
     );
     let construct_time = start.elapsed();
+
+    // Validate that all inserted keys are positive (contains returns true)
+    assert!(
+        inserted_keys.iter().all(|&k| xor.contains(&k)),
+        "XOR filter: all inserted keys should return true for contains()"
+    );
 
     let start = Instant::now();
     let mut positive_count = 0usize;

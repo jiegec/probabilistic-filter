@@ -1,5 +1,7 @@
 use crate::traits::{Deletable, Insertable, ProbabilisticFilter};
+use num_traits::{One, Zero};
 use rand::Rng;
+use std::ops::{BitAnd, Not, Shl, Sub};
 
 /// A Cuckoo filter is a probabilistic data structure that supports insertion, deletion, and membership testing.
 /// It is similar to a Bloom filter but supports deletions and has better space efficiency for certain use cases.
@@ -15,7 +17,14 @@ use rand::Rng;
 /// * Bin Fan, Dave G. Andersen, Michael Kaminsky, and Michael D. Mitzenmacher. 2014. Cuckoo Filter: Practically Better Than Bloom. In Proceedings of the 10th ACM International on Conference on emerging Networking Experiments and Technologies (CoNEXT '14). Association for Computing Machinery, New York, NY, USA, 75–88. https://doi.org/10.1145/2674005.2674994
 pub struct CuckooFilter<T, F, H, FP, AI>
 where
-    F: Copy + PartialEq,
+    F: Copy
+        + PartialEq
+        + Zero
+        + One
+        + BitAnd<Output = F>
+        + Not<Output = F>
+        + Shl<usize, Output = F>
+        + Sub<Output = F>,
     H: Fn(&T) -> u64,
     FP: Fn(&T) -> F,
     AI: Fn(usize, F) -> usize,
@@ -27,12 +36,20 @@ where
     hash_func: H,
     fingerprint_func: FP,
     alt_index_func: AI,
+    effective_bits: usize,
     _phantom: std::marker::PhantomData<T>,
 }
 
 impl<T, F, H, FP, AI> CuckooFilter<T, F, H, FP, AI>
 where
-    F: Copy + PartialEq,
+    F: Copy
+        + PartialEq
+        + Zero
+        + One
+        + BitAnd<Output = F>
+        + Not<Output = F>
+        + Shl<usize, Output = F>
+        + Sub<Output = F>,
     H: Fn(&T) -> u64,
     FP: Fn(&T) -> F,
     AI: Fn(usize, F) -> usize,
@@ -46,6 +63,7 @@ where
     /// * `hash_func` - Hash function to compute primary index
     /// * `fingerprint_func` - Function to compute fingerprint from item
     /// * `alt_index_func` - Function to compute alternate index from (index, fingerprint)
+    /// * `effective_bits` - Number of bits actually used from the fingerprint type
     pub fn new(
         num_buckets: usize,
         bucket_size: usize,
@@ -53,6 +71,7 @@ where
         hash_func: H,
         fingerprint_func: FP,
         alt_index_func: AI,
+        effective_bits: usize,
     ) -> Self {
         CuckooFilter {
             buckets: vec![None; num_buckets * bucket_size],
@@ -62,6 +81,7 @@ where
             hash_func,
             fingerprint_func,
             alt_index_func,
+            effective_bits,
             _phantom: std::marker::PhantomData,
         }
     }
@@ -72,7 +92,20 @@ where
     }
 
     fn get_fingerprint(&self, item: &T) -> F {
-        (self.fingerprint_func)(item)
+        let fp = (self.fingerprint_func)(item);
+        self.mask_fingerprint(fp)
+    }
+
+    fn mask_fingerprint(&self, fp: F) -> F {
+        // Mask to only use effective bits
+        // For full-width effective_bits, use all ones mask
+        let full_bits = std::mem::size_of::<F>() * 8;
+        let mask = if self.effective_bits >= full_bits {
+            !F::zero()
+        } else {
+            (F::one() << self.effective_bits) - F::one()
+        };
+        fp & mask
     }
 
     fn get_alt_index(&self, index: usize, fingerprint: F) -> usize {
@@ -86,7 +119,9 @@ where
     fn find_in_bucket(&self, bucket_idx: usize, fingerprint: F) -> bool {
         let offset = self.bucket_offset(bucket_idx);
         for i in 0..self.bucket_size {
-            if self.buckets[offset + i] == Some(fingerprint) {
+            if let Some(stored_fp) = self.buckets[offset + i]
+                && fingerprint == stored_fp
+            {
                 return true;
             }
         }
@@ -128,7 +163,14 @@ where
 
 impl<T, F, H, FP, AI> ProbabilisticFilter<T> for CuckooFilter<T, F, H, FP, AI>
 where
-    F: Copy + PartialEq,
+    F: Copy
+        + PartialEq
+        + Zero
+        + One
+        + BitAnd<Output = F>
+        + Not<Output = F>
+        + Shl<usize, Output = F>
+        + Sub<Output = F>,
     H: Fn(&T) -> u64,
     FP: Fn(&T) -> F,
     AI: Fn(usize, F) -> usize,
@@ -143,13 +185,20 @@ where
 
     fn size_in_bits(&self) -> usize {
         // one extra bit for Option
-        self.buckets.len() * (std::mem::size_of::<F>() * 8 + 1)
+        self.buckets.len() * (self.effective_bits + 1)
     }
 }
 
 impl<T, F, H, FP, AI> Insertable<T> for CuckooFilter<T, F, H, FP, AI>
 where
-    F: Copy + PartialEq,
+    F: Copy
+        + PartialEq
+        + Zero
+        + One
+        + BitAnd<Output = F>
+        + Not<Output = F>
+        + Shl<usize, Output = F>
+        + Sub<Output = F>,
     H: Fn(&T) -> u64,
     FP: Fn(&T) -> F,
     AI: Fn(usize, F) -> usize,
@@ -195,7 +244,14 @@ where
 
 impl<T, F, H, FP, AI> Deletable<T> for CuckooFilter<T, F, H, FP, AI>
 where
-    F: Copy + PartialEq,
+    F: Copy
+        + PartialEq
+        + Zero
+        + One
+        + BitAnd<Output = F>
+        + Not<Output = F>
+        + Shl<usize, Output = F>
+        + Sub<Output = F>,
     H: Fn(&T) -> u64,
     FP: Fn(&T) -> F,
     AI: Fn(usize, F) -> usize,
@@ -220,14 +276,22 @@ mod tests {
     fn test_cuckoo_insert_and_contains() {
         let num_buckets = 32;
         let bucket_size = 4;
+        let effective_bits = 8;
 
         let hash_fn = |item: &u64| item.wrapping_mul(0x5bd1e9955bd1e995);
         let fp_func = |item: &u64| (hash_fn(item) & 0xFF) as u8 | 1;
         let alt_func = |index: usize, fp: u8| {
             (index as u64 ^ (fp as u64).wrapping_mul(0x5bd1e9955bd1e995)) as usize
         };
-        let mut cuckoo =
-            CuckooFilter::new(num_buckets, bucket_size, 500, hash_fn, fp_func, alt_func);
+        let mut cuckoo = CuckooFilter::new(
+            num_buckets,
+            bucket_size,
+            500,
+            hash_fn,
+            fp_func,
+            alt_func,
+            effective_bits,
+        );
 
         assert!(!cuckoo.contains(&1));
         cuckoo.insert(&1);
@@ -239,14 +303,22 @@ mod tests {
     fn test_cuckoo_no_false_negatives() {
         let num_buckets = 32;
         let bucket_size = 4;
+        let effective_bits = 8;
 
         let hash_fn = |item: &u64| item.wrapping_mul(0x5bd1e9955bd1e995);
         let fp_func = |item: &u64| (hash_fn(item) & 0xFF) as u8 | 1;
         let alt_func = |index: usize, fp: u8| {
             (index as u64 ^ (fp as u64).wrapping_mul(0x5bd1e9955bd1e995)) as usize
         };
-        let mut cuckoo =
-            CuckooFilter::new(num_buckets, bucket_size, 500, hash_fn, fp_func, alt_func);
+        let mut cuckoo = CuckooFilter::new(
+            num_buckets,
+            bucket_size,
+            500,
+            hash_fn,
+            fp_func,
+            alt_func,
+            effective_bits,
+        );
 
         for i in 0..50 {
             cuckoo.insert(&i);
@@ -261,14 +333,22 @@ mod tests {
     fn test_cuckoo_delete() {
         let num_buckets = 32;
         let bucket_size = 4;
+        let effective_bits = 8;
 
         let hash_fn = |item: &u64| item.wrapping_mul(0x5bd1e9955bd1e995);
         let fp_func = |item: &u64| (hash_fn(item) & 0xFF) as u8 | 1;
         let alt_func = |index: usize, fp: u8| {
             (index as u64 ^ (fp as u64).wrapping_mul(0x5bd1e9955bd1e995)) as usize
         };
-        let mut cuckoo =
-            CuckooFilter::new(num_buckets, bucket_size, 500, hash_fn, fp_func, alt_func);
+        let mut cuckoo = CuckooFilter::new(
+            num_buckets,
+            bucket_size,
+            500,
+            hash_fn,
+            fp_func,
+            alt_func,
+            effective_bits,
+        );
 
         cuckoo.insert(&1);
         assert!(cuckoo.contains(&1));
@@ -282,14 +362,22 @@ mod tests {
         let num_items = 500;
         let num_buckets = 512;
         let bucket_size = 4;
+        let effective_bits = 8;
 
         let hash_fn = |item: &u64| item.wrapping_mul(0x5bd1e9955bd1e995);
         let fp_func = |item: &u64| (hash_fn(item) & 0xFF) as u8 | 1;
         let alt_func = |index: usize, fp: u8| {
             (index as u64 ^ (fp as u64).wrapping_mul(0x5bd1e9955bd1e995)) as usize
         };
-        let mut cuckoo =
-            CuckooFilter::new(num_buckets, bucket_size, 500, hash_fn, fp_func, alt_func);
+        let mut cuckoo = CuckooFilter::new(
+            num_buckets,
+            bucket_size,
+            500,
+            hash_fn,
+            fp_func,
+            alt_func,
+            effective_bits,
+        );
 
         // Insert items
         for i in 0..num_items {

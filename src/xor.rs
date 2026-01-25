@@ -103,20 +103,20 @@ where
 
             let hash0 = |item: &T| -> usize {
                 let hash = hash(item, seed0);
-                let idx = hash % third_size;
-                idx
+
+                hash % third_size
             };
 
             let hash1 = |item: &T| -> usize {
                 let hash = hash(item, seed1);
-                let idx = third_size + (hash % third_size);
-                idx
+
+                third_size + (hash % third_size)
             };
 
             let hash2 = |item: &T| -> usize {
                 let hash = hash(item, seed2);
-                let idx = two_thirds_size + (hash % (array_size - two_thirds_size));
-                idx
+
+                two_thirds_size + (hash % (array_size - two_thirds_size))
             };
 
             for (item_idx, item) in items.iter().enumerate() {
@@ -269,20 +269,20 @@ where
 
         let hash0 = |item: &T| -> usize {
             let hash = hash(item, seed0);
-            let idx = hash % third_size;
-            idx
+
+            hash % third_size
         };
 
         let hash1 = |item: &T| -> usize {
             let hash = hash(item, seed1);
-            let idx = third_size + (hash % third_size);
-            idx
+
+            third_size + (hash % third_size)
         };
 
         let hash2 = |item: &T| -> usize {
             let hash = hash(item, seed2);
-            let idx = two_thirds_size + (hash % (array_size - two_thirds_size));
-            idx
+
+            two_thirds_size + (hash % (array_size - two_thirds_size))
         };
 
         let idx0 = (hash0)(item);
