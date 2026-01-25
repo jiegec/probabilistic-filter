@@ -167,7 +167,7 @@ fn main() {
             construct_time: xor_construct_time,
             actual_bits_per_key: xor_actual_bits_per_key,
             size_in_bits: xor_size_in_bits,
-            parameters: format!("{} bit fingerprint", xor_effective_bits),
+            parameters: format!("{} bit fingerprint, {} fingerprints", xor_effective_bits, xor.fingerprint_count()),
         };
         print_construction_results(&xor_bench);
 

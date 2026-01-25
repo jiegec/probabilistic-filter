@@ -217,6 +217,11 @@ where
         };
         fp & mask
     }
+
+    /// Returns the number of fingerprints stored in the filter.
+    pub fn fingerprint_count(&self) -> usize {
+        self.fingerprints.len()
+    }
 }
 
 fn remove_item_from_position(
