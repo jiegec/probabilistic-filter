@@ -227,11 +227,8 @@ where
             // Kick out a random item from the bucket
             let offset = self.bucket_offset(current_index);
             let kick_slot = offset + rng.random_range(0..self.bucket_size);
-            let kicked_fp = self.buckets[kick_slot];
-            self.buckets[kick_slot] = current_fp;
-
-            current_fp = kicked_fp;
-            current_index = self.get_alt_index(current_index, kicked_fp);
+            std::mem::swap(&mut self.buckets[kick_slot], &mut current_fp);
+            current_index = self.get_alt_index(current_index, current_fp);
         }
 
         // Failed to insert after max_kicks attempts
