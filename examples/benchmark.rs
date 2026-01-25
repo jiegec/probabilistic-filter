@@ -144,12 +144,30 @@ fn benchmark_bloom(
 ) -> (f64, f64) {
     let num_bits = (NUM_KEYS as f64 * bits_per_key).ceil() as usize;
 
-    let h1 = |item: &u64| -> u64 { item.wrapping_mul(0x5bd1e9955bd1e995) };
-    let h2 = |item: &u64| -> u64 { item.wrapping_mul(0x9e3779b97f4a7c1) };
-    let h3 = |item: &u64| -> u64 { item.wrapping_mul(0xc13fa9a902a6328f) };
-    let h4 = |item: &u64| -> u64 { item.wrapping_mul(0x9e3779b97f4a7c15) };
+    // Calculate optimal number of hash functions
+    let num_hashes = BloomFilter::<u64, fn(&u64) -> u64>::optimal_num_hashes(num_bits, NUM_KEYS);
 
-    let hash_funcs = vec![h1, h2, h3, h4];
+    // Generate seeds for hash functions
+    let mut rng = rand::rng();
+    let seeds: Vec<u64> = (0..num_hashes).map(|_| rng.random()).collect();
+
+    // Create hash function that takes a seed
+    fn hash_with_seed(item: &u64, seed: u64) -> u64 {
+        let mut h = seed.wrapping_add(*item);
+        h ^= h >> 33;
+        h = h.wrapping_mul(0xff51afd7ed558ccd);
+        h ^= h >> 33;
+        h = h.wrapping_mul(0xc4ceb9fe1a85ec53);
+        h ^= h >> 33;
+        h
+    }
+
+    // Create hash functions using match arms - each closure captures its own seed
+    let mut hash_funcs: Vec<Box<dyn Fn(&u64) -> u64>> = Vec::new();
+    for i in 0..num_hashes {
+        let seed = seeds[i];
+        hash_funcs.push(Box::new(move |item: &u64| hash_with_seed(item, seed)));
+    }
 
     let start = Instant::now();
     let mut bloom = BloomFilter::new(num_bits, hash_funcs);
