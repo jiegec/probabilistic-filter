@@ -6,17 +6,43 @@ use std::{collections::VecDeque, ops::Not};
 
 /// Configuration for a binary fuse filter.
 ///
+/// # Type Parameters
+/// * `T` - The type of items stored in the filter
+/// * `F` - The fingerprint type (e.g., u8, u16, u32)
+/// * `H` - The hash function that computes indices from data and seed
+/// * `FP` - Function that computes fingerprint from an item
+///
 /// # Fields
+/// * `hash` - The hash function to compute bucket indices
+/// * `fingerprint_func` - Function to compute fingerprint from an item
 /// * `effective_bits` - Number of bits used from the fingerprint type.
 #[derive(Clone, Copy)]
-pub struct BinaryFuseConfig {
+pub struct BinaryFuseConfig<T, F, H, FP>
+where
+    F: Copy,
+    H: Fn(&T, u64) -> usize,
+    FP: Fn(&T) -> F,
+{
+    pub hash: H,
+    pub fingerprint_func: FP,
     pub effective_bits: usize,
+    _phantom: std::marker::PhantomData<(T, F)>,
 }
 
-impl BinaryFuseConfig {
-    /// Create a new configuration with the given arity and effective bits.
-    pub fn new(effective_bits: usize) -> Self {
-        BinaryFuseConfig { effective_bits }
+impl<T, F, H, FP> BinaryFuseConfig<T, F, H, FP>
+where
+    F: Copy,
+    H: Fn(&T, u64) -> usize,
+    FP: Fn(&T) -> F,
+{
+    /// Create a new configuration with the given hash function, fingerprint function, and effective bits.
+    pub fn new(hash: H, fingerprint_func: FP, effective_bits: usize) -> Self {
+        BinaryFuseConfig {
+            hash,
+            fingerprint_func,
+            effective_bits,
+            _phantom: std::marker::PhantomData,
+        }
     }
 }
 
@@ -31,8 +57,6 @@ pub type BinaryFuseFilter4<T, F, H, FP> = BinaryFuseFilter<T, F, H, FP, 4>;
 /// # Type Parameters
 /// * `T` - The type of items stored in the filter
 /// * `F` - The fingerprint type (e.g., u8, u16, u32)
-/// * `H` - The hash function that computes indices from data and seed
-/// * `FP` - Function that computes fingerprint from an item
 /// * `AR` - Arity of the binary fuse filter (3 or 4)
 ///
 /// # References
@@ -88,17 +112,12 @@ where
     where
         U: IntoIterator<Item = T>,
     {
-        let config = BinaryFuseConfig::new(effective_bits);
-        Self::new_with_config(items, hash, fingerprint_func, config)
+        let config = BinaryFuseConfig::new(hash, fingerprint_func, effective_bits);
+        Self::new_with_config(items, config)
     }
 
     /// Create a new binary fuse filter from an iterator of items with configuration.
-    pub fn new_with_config<U>(
-        items: U,
-        hash: H,
-        fingerprint_func: FP,
-        config: BinaryFuseConfig,
-    ) -> Self
+    pub fn new_with_config<U>(items: U, config: BinaryFuseConfig<T, F, H, FP>) -> Self
     where
         U: IntoIterator<Item = T>,
     {
@@ -158,10 +177,11 @@ where
 
             for (item_idx, item) in items.iter().enumerate() {
                 // starting segment index
-                let segment_idx = hash(item, seed0) % num_segments;
+                let segment_idx = (config.hash)(item, seed0) % num_segments;
                 for (i, seed) in seeds.iter().enumerate() {
                     // consecutive segment indices
-                    let idx = (segment_idx + i) * segment_size + hash(item, *seed) % segment_size;
+                    let idx = (segment_idx + i) * segment_size
+                        + (config.hash)(item, *seed) % segment_size;
                     pos_to_items[idx].insert(item_idx);
                 }
             }
@@ -197,10 +217,11 @@ where
                 // Compute indices again
                 let item = &items[item_idx];
                 let mut other_indices = [0usize; AR];
-                let segment_idx = hash(item, seed0) % num_segments;
+                let segment_idx = (config.hash)(item, seed0) % num_segments;
                 for (i, seed) in seeds.iter().enumerate() {
                     // consecutive segment indices
-                    let idx = (segment_idx + i) * segment_size + hash(item, *seed) % segment_size;
+                    let idx = (segment_idx + i) * segment_size
+                        + (config.hash)(item, *seed) % segment_size;
                     other_indices[i] = idx;
                 }
 
@@ -231,7 +252,7 @@ where
             while let Some((item_idx, pos, other_pos)) = stack.pop() {
                 let item = &items[item_idx];
                 let fingerprint =
-                    Self::get_fingerprint(&fingerprint_func, config.effective_bits, item);
+                    Self::get_fingerprint(&config.fingerprint_func, config.effective_bits, item);
 
                 // Since fingerprints[pos] starts at 0, we get f XOR fp[idx0] XOR fp[idx1] XOR fp[idx2]
                 // XOR with zero is identity, so this correctly computes the needed value
@@ -248,8 +269,8 @@ where
                 fingerprints,
                 seed0,
                 seeds,
-                hash,
-                fingerprint_func,
+                hash: config.hash,
+                fingerprint_func: config.fingerprint_func,
                 effective_bits: config.effective_bits,
                 _phantom: std::marker::PhantomData,
             };
@@ -328,14 +349,14 @@ where
     H: Fn(&T, u64) -> usize,
     FP: Fn(&T) -> F,
 {
-    type Config = (H, FP, BinaryFuseConfig);
+    type Config = BinaryFuseConfig<T, F, H, FP>;
 
     fn from_iter_with<U>(items: U, config: Self::Config) -> Self
     where
         Self: Sized,
         U: IntoIterator<Item = T>,
     {
-        Self::new_with_config(items, config.0, config.1, config.2)
+        Self::new_with_config(items, config)
     }
 }
 
@@ -350,9 +371,9 @@ mod tests {
         let hash = |item: &u64, seed: u64| -> usize { (*item ^ seed) as usize };
         let fp_func = |item: &u64| -> u8 { (item.wrapping_mul(0x5bd1e9955bd1e995) & 0xFF) as u8 };
         let items: Vec<u64> = vec![1, 2, 3];
-        let config = BinaryFuseConfig::new(8);
+        let config = BinaryFuseConfig::new(hash, fp_func, 8);
 
-        let filter = BinaryFuseFilter3::from_iter_with(items, (hash, fp_func, config));
+        let filter = BinaryFuseFilter3::from_iter_with(items, config);
 
         assert!(filter.contains(&1));
         assert!(filter.contains(&2));
@@ -367,9 +388,9 @@ mod tests {
         let hash = |item: &u64, seed: u64| -> usize { (*item ^ seed) as usize };
         let fp_func = |item: &u64| -> u8 { (item.wrapping_mul(0x5bd1e9955bd1e995) & 0xFF) as u8 };
         let items: Vec<u64> = vec![1, 2, 3];
-        let config = BinaryFuseConfig::new(8);
+        let config = BinaryFuseConfig::new(hash, fp_func, 8);
 
-        let filter = BinaryFuseFilter4::from_iter_with(items, (hash, fp_func, config));
+        let filter = BinaryFuseFilter4::from_iter_with(items, config);
 
         assert!(filter.contains(&1));
         assert!(filter.contains(&2));
@@ -384,9 +405,9 @@ mod tests {
         let hash = |item: &u64, seed: u64| -> usize { (*item ^ seed) as usize };
         let fp_func = |item: &u64| -> u8 { (item.wrapping_mul(0x5bd1e9955bd1e995) & 0xFF) as u8 };
         let items: Vec<u64> = vec![];
-        let config = BinaryFuseConfig::new(8);
+        let config = BinaryFuseConfig::new(hash, fp_func, 8);
 
-        let filter = BinaryFuseFilter3::from_iter_with(items, (hash, fp_func, config));
+        let filter = BinaryFuseFilter3::from_iter_with(items, config);
 
         assert!(!filter.contains(&1));
     }
@@ -416,9 +437,9 @@ mod tests {
             (h & 0xFF) as u8
         };
         let items: Vec<u64> = (0..1000).collect();
-        let config = BinaryFuseConfig::new(8);
+        let config = BinaryFuseConfig::new(hash, fp_func, 8);
 
-        let filter = BinaryFuseFilter4::from_iter_with(items, (hash, fp_func, config));
+        let filter = BinaryFuseFilter4::from_iter_with(items, config);
 
         // All inserted items should be found
         for i in 0..1000 {

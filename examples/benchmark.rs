@@ -1,5 +1,4 @@
-use probabilistic_filter::BinaryFuseConfig;
-use probabilistic_filter::binaryfuse::{BinaryFuseFilter3, BinaryFuseFilter4};
+use probabilistic_filter::binaryfuse::{BinaryFuseConfig, BinaryFuseFilter3, BinaryFuseFilter4};
 use probabilistic_filter::bloom::BloomFilter;
 use probabilistic_filter::cuckoo::CuckooFilter;
 use probabilistic_filter::traits::{Constructible, Insertable, ProbabilisticFilter};
@@ -178,15 +177,12 @@ fn main() {
 
         // Build BinaryFuse 3-way filter
         let bf3_effective_bits = (bits_per_key / 1.125).ceil() as usize;
-        let bf3_hash = |item: &u64, seed: u64| -> usize { hash_with_seed(item, seed) as usize };
         let bf3_fp_seed: u64 = rng.random();
         let bf3_fingerprint_func = |item: &u64| -> u64 { hash_with_seed(item, bf3_fp_seed) };
-        let bf3_config = BinaryFuseConfig::new(bf3_effective_bits);
+        let bf3_hash = |item: &u64, seed: u64| -> usize { hash_with_seed(item, seed) as usize };
+        let bf3_config = BinaryFuseConfig::new(bf3_hash, bf3_fingerprint_func, bf3_effective_bits);
         let bf3_start = Instant::now();
-        let bf3 = BinaryFuseFilter3::from_iter_with(
-            inserted_keys.iter().copied(),
-            (bf3_hash, bf3_fingerprint_func, bf3_config),
-        );
+        let bf3 = BinaryFuseFilter3::from_iter_with(inserted_keys.iter().copied(), bf3_config);
         let bf3_construct_time = bf3_start.elapsed();
         assert!(
             inserted_keys.iter().all(|&k| bf3.contains(&k)),
@@ -210,15 +206,12 @@ fn main() {
 
         // Build BinaryFuse 4-way filter
         let bf4_effective_bits = (bits_per_key / 1.075).ceil() as usize;
-        let bf4_hash = |item: &u64, seed: u64| -> usize { hash_with_seed(item, seed) as usize };
         let bf4_fp_seed: u64 = rng.random();
         let bf4_fingerprint_func = |item: &u64| -> u64 { hash_with_seed(item, bf4_fp_seed) };
-        let bf4_config = BinaryFuseConfig::new(bf4_effective_bits);
+        let bf4_hash = |item: &u64, seed: u64| -> usize { hash_with_seed(item, seed) as usize };
+        let bf4_config = BinaryFuseConfig::new(bf4_hash, bf4_fingerprint_func, bf4_effective_bits);
         let bf4_start = Instant::now();
-        let bf4 = BinaryFuseFilter4::from_iter_with(
-            inserted_keys.iter().copied(),
-            (bf4_hash, bf4_fingerprint_func, bf4_config),
-        );
+        let bf4 = BinaryFuseFilter4::from_iter_with(inserted_keys.iter().copied(), bf4_config);
         let bf4_construct_time = bf4_start.elapsed();
         assert!(
             inserted_keys.iter().all(|&k| bf4.contains(&k)),
