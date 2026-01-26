@@ -36,6 +36,15 @@ where
     FP: Fn(&T) -> F,
 {
     /// Create a new configuration with the given hash function, fingerprint function, and effective bits.
+    ///
+    /// # Example
+    /// ```
+    /// use probabilistic_filter::binaryfuse::BinaryFuseConfig;
+    ///
+    /// let hash = |item: &u64, seed: u64| (*item ^ seed) as usize;
+    /// let fp_func = |item: &u64| (item.wrapping_mul(0x5bd1e9955bd1e995) & 0xFF) as u8;
+    /// let config = BinaryFuseConfig::new(hash, fp_func, 8);
+    /// ```
     pub fn new(hash: H, fingerprint_func: FP, effective_bits: usize) -> Self {
         BinaryFuseConfig {
             hash,
@@ -117,6 +126,22 @@ where
     }
 
     /// Create a new binary fuse filter from an iterator of items with configuration.
+    ///
+    /// # Example
+    /// ```
+    /// use probabilistic_filter::{binaryfuse::{BinaryFuseConfig, BinaryFuseFilter3}, Constructible, ProbabilisticFilter};
+    ///
+    /// let hash = |item: &u64, seed: u64| (*item ^ seed) as usize;
+    /// let fp_func = |item: &u64| (item.wrapping_mul(0x5bd1e9955bd1e995) & 0xFF) as u8;
+    /// let config = BinaryFuseConfig::new(hash, fp_func, 8);
+    /// let items = vec![1u64, 2, 3];
+    /// let filter = BinaryFuseFilter3::from_iter_with(items, config);
+    ///
+    /// assert!(filter.contains(&1));
+    /// assert!(filter.contains(&2));
+    /// assert!(filter.contains(&3));
+    /// assert!(!filter.contains(&4));
+    /// ```
     pub fn new_with_config<U>(items: U, config: BinaryFuseConfig<T, F, H, FP>) -> Self
     where
         U: IntoIterator<Item = T>,

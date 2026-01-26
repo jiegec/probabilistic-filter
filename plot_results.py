@@ -165,8 +165,8 @@ ax.plot(
 
 # Set log scale for y axis
 ax.set_yscale("log")
-ax.set_ylim(1e-6, 1.0)
-ax.set_xlim(5, 25)
+ax.set_ylim(1e-6, 1e-1)
+ax.set_xlim(7, 22)
 
 # Labels and title
 ax.set_xlabel("Space Usage (bits per key)", fontsize=12)
