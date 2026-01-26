@@ -44,6 +44,12 @@ pub struct SetQuery {
     field0: usize,
 }
 
+impl Default for SetQuery {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SetQuery {
     pub fn new() -> Self {
         SetQuery {
@@ -70,6 +76,10 @@ impl SetQuery {
 
     pub fn len(&self) -> usize {
         self.count
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.count == 0
     }
 }
 

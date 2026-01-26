@@ -233,7 +233,7 @@ where
 
                 // Skip if position no longer has exactly one item
                 if pos_to_items[pos].len() != 1 {
-                    debug_assert!(pos_to_items[pos].len() == 0);
+                    debug_assert!(pos_to_items[pos].is_empty());
                     continue;
                 }
 
