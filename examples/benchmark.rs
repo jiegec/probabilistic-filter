@@ -2,6 +2,7 @@ use probabilistic_filter::binaryfuse::{BinaryFuseConfig, BinaryFuseFilter3, Bina
 use probabilistic_filter::bloom::BloomFilter;
 use probabilistic_filter::cuckoo::CuckooFilter;
 use probabilistic_filter::traits::{Constructible, Insertable, ProbabilisticFilter};
+use probabilistic_filter::utils::reduce;
 use probabilistic_filter::xor::XorFilter;
 use probabilistic_filter::xor::XorFilterConfig;
 use rand::Rng;
@@ -107,7 +108,7 @@ fn main() {
             let hashed_fp = hash_with_seed(&fp, cuckoo_fp_seed);
             // instead of using xor which requires power of two buckets
             // use mirrored index, learned from fastfilters
-            let r = hashed_fp as usize % (cuckoo_num_buckets / 2) * 2 + 1;
+            let r = reduce(hashed_fp as u32, (cuckoo_num_buckets / 2) as u32) as usize * 2 + 1;
             let mut alt_index = (cuckoo_num_buckets + cuckoo_num_buckets - index) - r;
             // modulo converted to branch + subtract
             if alt_index >= cuckoo_num_buckets {

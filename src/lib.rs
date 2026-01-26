@@ -2,9 +2,8 @@ pub mod binaryfuse;
 pub mod bloom;
 pub mod cuckoo;
 pub mod traits;
+pub mod utils;
 pub mod xor;
-
-pub(crate) mod utils;
 
 pub use binaryfuse::{BinaryFuseConfig, BinaryFuseFilter};
 pub use bloom::BloomFilter;

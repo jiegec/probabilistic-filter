@@ -148,7 +148,7 @@ fn bench_xor_creation(c: &mut Criterion) {
         let effective_bits = 8;
         let keys: Vec<u64> = (0..size).map(|i| i as u64).collect();
 
-        let hash = move |item: &u64, seed: u64| -> u64 { *item ^ seed };
+        let hash = move |item: &u64, seed: u64| -> u64 { hash_with_seed(item, seed) };
 
         let fingerprint_func = move |item: &u64| -> u64 { item.wrapping_mul(0x9e3779b97f4a7c15) };
 

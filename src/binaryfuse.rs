@@ -1,5 +1,5 @@
 use crate::traits::{Constructible, ProbabilisticFilter};
-use crate::utils::{SetQuery, mask_fingerprint};
+use crate::utils::{SetQuery, mask_fingerprint, reduce};
 use num_traits::{One, Zero};
 use rand::Rng;
 use std::{collections::VecDeque, ops::Not};
@@ -202,11 +202,12 @@ where
 
             for (item_idx, item) in items.iter().enumerate() {
                 // starting segment index
-                let segment_idx = (config.hash)(item, seed0) as usize % num_segments;
+                let segment_idx =
+                    reduce((config.hash)(item, seed0) as u32, num_segments as u32) as usize;
                 for (i, seed) in seeds.iter().enumerate() {
                     // consecutive segment indices
                     let idx = (segment_idx + i) * segment_size
-                        + (config.hash)(item, *seed) as usize % segment_size;
+                        + reduce((config.hash)(item, *seed) as u32, segment_size as u32) as usize;
                     pos_to_items[idx as usize].insert(item_idx);
                 }
             }
@@ -242,11 +243,12 @@ where
                 // Compute indices again
                 let item = &items[item_idx];
                 let mut other_indices = [0usize; AR];
-                let segment_idx = (config.hash)(item, seed0) as usize % num_segments;
+                let segment_idx =
+                    reduce((config.hash)(item, seed0) as u32, num_segments as u32) as usize;
                 for (i, seed) in seeds.iter().enumerate() {
                     // consecutive segment indices
                     let idx = (segment_idx + i) * segment_size
-                        + (config.hash)(item, *seed) as usize % segment_size;
+                        + reduce((config.hash)(item, *seed) as u32, segment_size as u32) as usize;
                     other_indices[i] = idx;
                 }
 
@@ -344,11 +346,17 @@ where
             Self::get_fingerprint(&self.fingerprint_func, self.effective_bits, item);
 
         // starting segment index
-        let segment_idx = (self.hash)(item, self.seed0) as usize % self.num_segments;
+        let segment_idx = reduce(
+            (self.hash)(item, self.seed0) as u32,
+            self.num_segments as u32,
+        ) as usize;
         for i in 0..AR {
             // consecutive segment indices
             let idx = (segment_idx + i) * self.segment_size
-                + (self.hash)(item, self.seeds[i]) as usize % self.segment_size;
+                + reduce(
+                    (self.hash)(item, self.seeds[i]) as u32,
+                    self.segment_size as u32,
+                ) as usize;
             fingerprint = fingerprint ^ self.fingerprints[idx];
         }
 
