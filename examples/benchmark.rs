@@ -3,6 +3,7 @@ use probabilistic_filter::bloom::BloomFilter;
 use probabilistic_filter::cuckoo::CuckooFilter;
 use probabilistic_filter::traits::{Constructible, Insertable, ProbabilisticFilter};
 use probabilistic_filter::xor::XorFilter;
+use probabilistic_filter::xor::XorFilterConfig;
 use rand::Rng;
 use std::collections::HashSet;
 use std::fs::File;
@@ -147,14 +148,12 @@ fn main() {
 
         // Build XOR filter
         let xor_effective_bits = (bits_per_key / 1.23).ceil() as usize;
-        let xor_hash = |item: &u64, seed: u64| -> usize { hash_with_seed(item, seed) as usize };
         let xor_fp_seed: u64 = rng.random();
         let xor_fingerprint_func = |item: &u64| -> u64 { hash_with_seed(item, xor_fp_seed) };
+        let xor_hash = |item: &u64, seed: u64| -> usize { hash_with_seed(item, seed) as usize };
+        let xor_config = XorFilterConfig::new(xor_hash, xor_fingerprint_func, xor_effective_bits);
         let xor_start = Instant::now();
-        let xor = XorFilter::from_iter_with(
-            inserted_keys.iter().copied(),
-            (xor_hash, xor_fingerprint_func, xor_effective_bits),
-        );
+        let xor = XorFilter::from_iter_with(inserted_keys.iter().copied(), xor_config);
         let xor_construct_time = xor_start.elapsed();
         assert!(
             inserted_keys.iter().all(|&k| xor.contains(&k)),

@@ -10,4 +10,4 @@ pub use binaryfuse::{BinaryFuseConfig, BinaryFuseFilter};
 pub use bloom::BloomFilter;
 pub use cuckoo::CuckooFilter;
 pub use traits::{Constructible, Deletable, Insertable, ProbabilisticFilter};
-pub use xor::XorFilter;
+pub use xor::{XorFilter, XorFilterConfig};

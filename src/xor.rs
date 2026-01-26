@@ -5,6 +5,48 @@ use rand::Rng;
 use std::collections::VecDeque;
 use std::ops::{BitAnd, BitXor, Not, Shl, Sub};
 
+/// Configuration for an XOR filter.
+///
+/// # Type Parameters
+/// * `T` - The type of items stored in the filter
+/// * `F` - The fingerprint type (e.g., u8, u16, u32)
+/// * `H` - The hash function that computes indices from data and seed
+/// * `FP` - Function that computes fingerprint from an item
+///
+/// # Fields
+/// * `hash` - The hash function to compute bucket indices
+/// * `fingerprint_func` - Function to compute fingerprint from an item
+/// * `effective_bits` - Number of bits used from the fingerprint type.
+#[derive(Clone, Copy)]
+pub struct XorFilterConfig<T, F, H, FP>
+where
+    F: Copy,
+    H: Fn(&T, u64) -> usize,
+    FP: Fn(&T) -> F,
+{
+    pub hash: H,
+    pub fingerprint_func: FP,
+    pub effective_bits: usize,
+    _phantom: std::marker::PhantomData<(T, F)>,
+}
+
+impl<T, F, H, FP> XorFilterConfig<T, F, H, FP>
+where
+    F: Copy,
+    H: Fn(&T, u64) -> usize,
+    FP: Fn(&T) -> F,
+{
+    /// Create a new configuration with the given hash function, fingerprint function, and effective bits.
+    pub fn new(hash: H, fingerprint_func: FP, effective_bits: usize) -> Self {
+        XorFilterConfig {
+            hash,
+            fingerprint_func,
+            effective_bits,
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+
 /// An XOR filter is a probabilistic data structure that supports membership testing.
 /// It is constructed in one pass from a set of items and cannot be modified afterward.
 /// It has better space efficiency than Bloom filters but does not support insertion or deletion.
@@ -212,6 +254,19 @@ where
         }
     }
 
+    /// Create a new XOR filter from an iterator of items with configuration.
+    pub fn new_with_config<U>(items: U, config: XorFilterConfig<T, F, H, FP>) -> Self
+    where
+        U: IntoIterator<Item = T>,
+    {
+        Self::new(
+            items,
+            config.hash,
+            config.fingerprint_func,
+            config.effective_bits,
+        )
+    }
+
     fn get_fingerprint(fingerprint_func: &FP, effective_bits: usize, item: &T) -> F {
         let fp = fingerprint_func(item);
         let masked = mask_fingerprint(effective_bits, fp);
@@ -297,14 +352,14 @@ where
     H: Fn(&T, u64) -> usize,
     FP: Fn(&T) -> F,
 {
-    type Config = (H, FP, usize);
+    type Config = XorFilterConfig<T, F, H, FP>;
 
     fn from_iter_with<U>(items: U, config: Self::Config) -> Self
     where
         Self: Sized,
         U: IntoIterator<Item = T>,
     {
-        Self::new(items, config.0, config.1, config.2)
+        Self::new_with_config(items, config)
     }
 }
 
@@ -319,9 +374,9 @@ mod tests {
         let hash = |item: &u64, seed: u64| -> usize { (*item ^ seed) as usize };
         let fp_func = |item: &u64| -> u8 { (item.wrapping_mul(0x5bd1e9955bd1e995) & 0xFF) as u8 };
         let items: Vec<u64> = vec![1, 2, 3];
-        let effective_bits = 8;
+        let config = XorFilterConfig::new(hash, fp_func, 8);
 
-        let xor = XorFilter::from_iter_with(items, (hash, fp_func, effective_bits));
+        let xor = XorFilter::from_iter_with(items, config);
 
         assert!(xor.contains(&1));
         assert!(xor.contains(&2));
@@ -336,9 +391,9 @@ mod tests {
         let hash = |item: &u64, seed: u64| -> usize { (*item ^ seed) as usize };
         let fp_func = |item: &u64| -> u8 { (item.wrapping_mul(0x5bd1e9955bd1e995) & 0xFF) as u8 };
         let items: Vec<u64> = vec![];
-        let effective_bits = 8;
+        let config = XorFilterConfig::new(hash, fp_func, 8);
 
-        let xor = XorFilter::from_iter_with(items, (hash, fp_func, effective_bits));
+        let xor = XorFilter::from_iter_with(items, config);
 
         assert!(!xor.contains(&1));
     }
