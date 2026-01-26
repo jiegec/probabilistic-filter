@@ -1,4 +1,5 @@
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
+use probabilistic_filter::XorFilterConfig;
 use probabilistic_filter::bloom::BloomFilter;
 use probabilistic_filter::cuckoo::CuckooFilter;
 use probabilistic_filter::traits::{Constructible, Insertable, ProbabilisticFilter};
@@ -156,7 +157,7 @@ fn bench_xor_creation(c: &mut Criterion) {
             b.iter(|| {
                 XorFilter::from_iter_with(
                     keys.iter().copied(),
-                    (hash, fingerprint_func, effective_bits),
+                    XorFilterConfig::new(hash, fingerprint_func, effective_bits),
                 )
             })
         });
@@ -178,7 +179,7 @@ fn bench_xor_query(c: &mut Criterion) {
 
         let filter = XorFilter::from_iter_with(
             keys.iter().copied(),
-            (hash, fingerprint_func, effective_bits),
+            XorFilterConfig::new(hash, fingerprint_func, effective_bits),
         );
 
         group.throughput(Throughput::Elements(size as u64));
