@@ -112,7 +112,7 @@ fn bench_cuckoo_query(c: &mut Criterion) {
 
         let alt_index = move |index: usize, fp: u64| -> usize {
             let hashed_fp = hash_with_seed(&fp, fp_seed);
-            index ^ hashed_fp as usize
+            (index ^ hashed_fp as usize) % num_buckets
         };
 
         let mut filter = CuckooFilter::new(
