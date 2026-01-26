@@ -37,3 +37,38 @@ where
     };
     fp & mask
 }
+
+#[derive(Clone)]
+pub struct SetQuery {
+    count: usize,
+    field0: usize,
+}
+
+impl SetQuery {
+    pub fn new() -> Self {
+        SetQuery {
+            count: 0,
+            field0: 0,
+        }
+    }
+
+    pub fn insert(&mut self, field0: usize) {
+        self.count += 1;
+        self.field0 ^= field0;
+    }
+
+    pub fn remove(&mut self, field0: usize) {
+        debug_assert!(self.count > 0);
+        self.count -= 1;
+        self.field0 ^= field0;
+    }
+
+    pub fn query(&self) -> (usize,) {
+        debug_assert!(self.count == 1);
+        (self.field0,)
+    }
+
+    pub fn len(&self) -> usize {
+        self.count
+    }
+}

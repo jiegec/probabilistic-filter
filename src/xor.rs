@@ -1,5 +1,5 @@
 use crate::traits::{Constructible, ProbabilisticFilter};
-use crate::utils::mask_fingerprint;
+use crate::utils::{SetQuery, mask_fingerprint};
 use num_traits::{One, Zero};
 use rand::Rng;
 use std::collections::VecDeque;
@@ -91,7 +91,7 @@ where
 
         loop {
             // Build a map from position to list of items that use this position
-            // Each entry is (item_index, other_position_1, other_position_2)
+            // Each entry is item_index
             // Use SetQuery to optimize allocation away
             let mut pos_to_items: Vec<SetQuery> = vec![SetQuery::new(); array_size];
 
@@ -152,6 +152,7 @@ where
 
                 // Skip if position no longer has exactly one item
                 if pos_to_items[pos].len() != 1 {
+                    debug_assert!(pos_to_items[pos].len() == 0);
                     continue;
                 }
 
@@ -222,41 +223,6 @@ where
     /// Returns the number of fingerprints stored in the filter.
     pub fn fingerprint_count(&self) -> usize {
         self.fingerprints.len()
-    }
-}
-
-#[derive(Clone)]
-struct SetQuery {
-    count: usize,
-    field0: usize,
-}
-
-impl SetQuery {
-    fn new() -> Self {
-        SetQuery {
-            count: 0,
-            field0: 0,
-        }
-    }
-
-    fn insert(&mut self, field0: usize) {
-        self.count += 1;
-        self.field0 ^= field0;
-    }
-
-    fn remove(&mut self, field0: usize) {
-        debug_assert!(self.count > 0);
-        self.count -= 1;
-        self.field0 ^= field0;
-    }
-
-    fn query(&self) -> (usize,) {
-        debug_assert!(self.count == 1);
-        (self.field0,)
-    }
-
-    fn len(&self) -> usize {
-        self.count
     }
 }
 

@@ -1,8 +1,9 @@
+use probabilistic_filter::BinaryFuseConfig;
+use probabilistic_filter::binaryfuse::{BinaryFuseFilter3, BinaryFuseFilter4};
 use probabilistic_filter::bloom::BloomFilter;
 use probabilistic_filter::cuckoo::CuckooFilter;
 use probabilistic_filter::traits::{Constructible, Insertable, ProbabilisticFilter};
 use probabilistic_filter::xor::XorFilter;
-use probabilistic_filter::{BinaryFuseConfig, BinaryFuseFilter};
 use rand::Rng;
 use std::collections::HashSet;
 use std::fs::File;
@@ -180,9 +181,9 @@ fn main() {
         let bf3_hash = |item: &u64, seed: u64| -> usize { hash_with_seed(item, seed) as usize };
         let bf3_fp_seed: u64 = rng.random();
         let bf3_fingerprint_func = |item: &u64| -> u64 { hash_with_seed(item, bf3_fp_seed) };
-        let bf3_config = BinaryFuseConfig::new(3, bf3_effective_bits);
+        let bf3_config = BinaryFuseConfig::new(bf3_effective_bits);
         let bf3_start = Instant::now();
-        let bf3 = BinaryFuseFilter::from_iter_with(
+        let bf3 = BinaryFuseFilter3::from_iter_with(
             inserted_keys.iter().copied(),
             (bf3_hash, bf3_fingerprint_func, bf3_config),
         );
@@ -212,9 +213,9 @@ fn main() {
         let bf4_hash = |item: &u64, seed: u64| -> usize { hash_with_seed(item, seed) as usize };
         let bf4_fp_seed: u64 = rng.random();
         let bf4_fingerprint_func = |item: &u64| -> u64 { hash_with_seed(item, bf4_fp_seed) };
-        let bf4_config = BinaryFuseConfig::new(4, bf4_effective_bits);
+        let bf4_config = BinaryFuseConfig::new(bf4_effective_bits);
         let bf4_start = Instant::now();
-        let bf4 = BinaryFuseFilter::from_iter_with(
+        let bf4 = BinaryFuseFilter4::from_iter_with(
             inserted_keys.iter().copied(),
             (bf4_hash, bf4_fingerprint_func, bf4_config),
         );
