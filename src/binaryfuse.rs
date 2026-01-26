@@ -40,8 +40,9 @@ where
     /// # Example
     /// ```
     /// use probabilistic_filter::binaryfuse::BinaryFuseConfig;
+    /// use probabilistic_filter::utils::hash_with_seed;
     ///
-    /// let hash = |item: &u64, seed: u64| (*item ^ seed) as usize;
+    /// let hash = |item: &u64, seed: u64| hash_with_seed(item, seed);
     /// let fp_func = |item: &u64| (item.wrapping_mul(0x5bd1e9955bd1e995) & 0xFF) as u8;
     /// let config = BinaryFuseConfig::new(hash, fp_func, 8);
     /// ```
@@ -130,8 +131,9 @@ where
     /// # Example
     /// ```
     /// use probabilistic_filter::{binaryfuse::{BinaryFuseConfig, BinaryFuseFilter3}, Constructible, ProbabilisticFilter};
+    /// use probabilistic_filter::utils::hash_with_seed;
     ///
-    /// let hash = |item: &u64, seed: u64| (*item ^ seed) as usize;
+    /// let hash = |item: &u64, seed: u64| hash_with_seed(item, seed);
     /// let fp_func = |item: &u64| (item.wrapping_mul(0x5bd1e9955bd1e995) & 0xFF) as u8;
     /// let config = BinaryFuseConfig::new(hash, fp_func, 8);
     /// let items = vec![1u64, 2, 3];
@@ -395,14 +397,16 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::utils::hash_with_seed;
+
     use super::*;
 
     #[test]
     fn test_binary_fuse_3way_basic() {
         use crate::traits::Constructible;
 
-        let hash = |item: &u64, seed: u64| -> u64 { *item ^ seed };
-        let fp_func = |item: &u64| -> u8 { (item.wrapping_mul(0x5bd1e9955bd1e995) & 0xFF) as u8 };
+        let hash = |item: &u64, seed: u64| -> u64 { hash_with_seed(item, seed) };
+        let fp_func = |item: &u64| -> u8 { item.wrapping_mul(0x5bd1e9955bd1e995) as u8 };
         let items: Vec<u64> = vec![1, 2, 3];
         let config = BinaryFuseConfig::new(hash, fp_func, 8);
 
@@ -418,8 +422,8 @@ mod tests {
     fn test_binary_fuse_4way_basic() {
         use crate::traits::Constructible;
 
-        let hash = |item: &u64, seed: u64| -> u64 { *item ^ seed };
-        let fp_func = |item: &u64| -> u8 { (item.wrapping_mul(0x5bd1e9955bd1e995) & 0xFF) as u8 };
+        let hash = |item: &u64, seed: u64| -> u64 { hash_with_seed(item, seed) };
+        let fp_func = |item: &u64| -> u8 { item.wrapping_mul(0x5bd1e9955bd1e995) as u8 };
         let items: Vec<u64> = vec![1, 2, 3];
         let config = BinaryFuseConfig::new(hash, fp_func, 8);
 
@@ -435,8 +439,8 @@ mod tests {
     fn test_binary_fuse_empty() {
         use crate::traits::Constructible;
 
-        let hash = |item: &u64, seed: u64| -> u64 { *item ^ seed };
-        let fp_func = |item: &u64| -> u8 { (item.wrapping_mul(0x5bd1e9955bd1e995) & 0xFF) as u8 };
+        let hash = |item: &u64, seed: u64| -> u64 { hash_with_seed(item, seed) };
+        let fp_func = |item: &u64| -> u8 { item.wrapping_mul(0x5bd1e9955bd1e995) as u8 };
         let items: Vec<u64> = vec![];
         let config = BinaryFuseConfig::new(hash, fp_func, 8);
 
@@ -450,25 +454,8 @@ mod tests {
         use crate::traits::Constructible;
 
         // Use better hash functions for the large set test
-        let hash = |item: &u64, seed: u64| -> u64 {
-            let mut h = item.wrapping_mul(0x5bd1e9955bd1e995);
-            h = h.wrapping_add(seed);
-            h ^= h >> 33;
-            h = h.wrapping_mul(0xff51afd7ed558ccd);
-            h ^= h >> 33;
-            h = h.wrapping_mul(0xc4ceb9fe1a85ec53);
-            h ^= h >> 33;
-            h
-        };
-        let fp_func = |item: &u64| -> u8 {
-            let mut h = item.wrapping_mul(0x9e3779b97f4a7c15);
-            h ^= h >> 16;
-            h = h.wrapping_mul(0x85ebca6b);
-            h ^= h >> 13;
-            h = h.wrapping_mul(0xc2b2ae35);
-            h ^= h >> 16;
-            (h & 0xFF) as u8
-        };
+        let hash = |item: &u64, seed: u64| -> u64 { hash_with_seed(item, seed) };
+        let fp_func = |item: &u64| -> u8 { hash_with_seed(item, 0) as u8 };
         let items: Vec<u64> = (0..1000).collect();
         let config = BinaryFuseConfig::new(hash, fp_func, 8);
 

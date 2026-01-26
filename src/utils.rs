@@ -88,3 +88,14 @@ pub fn reduce(hash: u32, size: u32) -> u32 {
     // http://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/
     ((hash as u64 * size as u64) >> 32) as u32
 }
+
+pub fn hash_with_seed(item: &u64, seed: u64) -> u64 {
+    // murmur hash 3 finalizer
+    let mut h = seed.wrapping_add(*item);
+    h ^= h >> 33;
+    h = h.wrapping_mul(0xff51afd7ed558ccd);
+    h ^= h >> 33;
+    h = h.wrapping_mul(0xc4ceb9fe1a85ec53);
+    h ^= h >> 33;
+    h
+}

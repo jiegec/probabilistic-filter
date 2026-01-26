@@ -2,7 +2,7 @@ use probabilistic_filter::binaryfuse::{BinaryFuseConfig, BinaryFuseFilter3, Bina
 use probabilistic_filter::bloom::BloomFilter;
 use probabilistic_filter::cuckoo::CuckooFilter;
 use probabilistic_filter::traits::{Constructible, Insertable, ProbabilisticFilter};
-use probabilistic_filter::utils::reduce;
+use probabilistic_filter::utils::{hash_with_seed, reduce};
 use probabilistic_filter::xor::XorFilter;
 use probabilistic_filter::xor::XorFilterConfig;
 use rand::Rng;
@@ -402,17 +402,6 @@ fn generate_query_keys(
     }
 
     query_keys
-}
-
-/// Shared hash function with seed support using MurmurHash3 finalizer
-fn hash_with_seed(item: &u64, seed: u64) -> u64 {
-    let mut h = seed.wrapping_add(*item);
-    h ^= h >> 33;
-    h = h.wrapping_mul(0xff51afd7ed558ccd);
-    h ^= h >> 33;
-    h = h.wrapping_mul(0xc4ceb9fe1a85ec53);
-    h ^= h >> 33;
-    h
 }
 
 /// Run queries against a filter and return query time and positive count

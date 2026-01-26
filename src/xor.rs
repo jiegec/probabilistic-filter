@@ -41,8 +41,9 @@ where
     /// # Example
     /// ```
     /// use probabilistic_filter::xor::XorFilterConfig;
+    /// use probabilistic_filter::utils::hash_with_seed;
     ///
-    /// let hash = |item: &u64, seed: u64| (*item ^ seed) as usize;
+    /// let hash = |item: &u64, seed: u64| hash_with_seed(item, seed);
     /// let fp_func = |item: &u64| (item.wrapping_mul(0x5bd1e9955bd1e995) & 0xFF) as u8;
     /// let config = XorFilterConfig::new(hash, fp_func, 8);
     /// ```
@@ -360,15 +361,16 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::utils::hash_with_seed;
+
     use super::*;
 
     #[test]
     fn test_xor_filter_basic() {
         use crate::traits::Constructible;
 
-        let hash =
-            |item: &u64, seed: u64| -> u64 { (*item ^ seed).wrapping_mul(0x5bd1e9955bd1e995) };
-        let fp_func = |item: &u64| -> u8 { (item.wrapping_mul(0x5bd1e9955bd1e995) & 0xFF) as u8 };
+        let hash = |item: &u64, seed: u64| -> u64 { hash_with_seed(item, seed) };
+        let fp_func = |item: &u64| -> u8 { item.wrapping_mul(0x5bd1e9955bd1e995) as u8 };
         let items: Vec<u64> = vec![1, 2, 3];
         let config = XorFilterConfig::new(hash, fp_func, 8);
 
@@ -384,9 +386,8 @@ mod tests {
     fn test_xor_filter_empty() {
         use crate::traits::Constructible;
 
-        let hash =
-            |item: &u64, seed: u64| -> u64 { (*item ^ seed).wrapping_mul(0x5bd1e9955bd1e995) };
-        let fp_func = |item: &u64| -> u8 { (item.wrapping_mul(0x5bd1e9955bd1e995) & 0xFF) as u8 };
+        let hash = |item: &u64, seed: u64| -> u64 { hash_with_seed(item, seed) };
+        let fp_func = |item: &u64| -> u8 { item.wrapping_mul(0x5bd1e9955bd1e995) as u8 };
         let items: Vec<u64> = vec![];
         let config = XorFilterConfig::new(hash, fp_func, 8);
 

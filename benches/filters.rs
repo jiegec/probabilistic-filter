@@ -10,16 +10,6 @@ use std::hint::black_box;
 
 const SIZES: &[usize] = &[1000, 10_000, 100_000];
 
-fn hash_with_seed(item: &u64, seed: u64) -> u64 {
-    let mut h = seed.wrapping_add(*item);
-    h ^= h >> 33;
-    h = h.wrapping_mul(0xff51afd7ed558ccd);
-    h ^= h >> 33;
-    h = h.wrapping_mul(0xc4ceb9fe1a85ec53);
-    h ^= h >> 33;
-    h
-}
-
 fn bench_bloom_insert(c: &mut Criterion) {
     let mut group = c.benchmark_group("bloom_insert");
 
