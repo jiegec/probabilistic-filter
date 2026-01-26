@@ -169,19 +169,17 @@ where
                 stack.push((item_idx, pos, idx0, idx1, idx2));
 
                 // Remove this item from all its positions
-                remove_item_from_position(&mut pos_to_items, idx0, item_idx);
-                remove_item_from_position(&mut pos_to_items, idx1, item_idx);
-                remove_item_from_position(&mut pos_to_items, idx2, item_idx);
+                pos_to_items[idx0].remove(item_idx);
+                pos_to_items[idx1].remove(item_idx);
+                pos_to_items[idx2].remove(item_idx);
 
                 // Check if any positions now have exactly one item
-                check_positions_for_queue(
-                    &pos_to_items,
-                    &mut queue,
-                    &mut in_queue,
-                    idx0,
-                    idx1,
-                    idx2,
-                );
+                for pos in [idx0, idx1, idx2] {
+                    if pos_to_items[pos].len() == 1 && !in_queue[pos] {
+                        in_queue[pos] = true;
+                        queue.push_back(pos);
+                    }
+                }
             }
 
             if stack.len() != num_items {
@@ -247,38 +245,18 @@ impl SetQuery {
     }
 
     fn remove(&mut self, field0: usize) {
-        assert!(self.count > 0);
+        debug_assert!(self.count > 0);
         self.count -= 1;
         self.field0 ^= field0;
     }
 
     fn query(&self) -> (usize,) {
-        assert!(self.count == 1);
+        debug_assert!(self.count == 1);
         (self.field0,)
     }
 
     fn len(&self) -> usize {
         self.count
-    }
-}
-
-fn remove_item_from_position(pos_to_items: &mut [SetQuery], pos: usize, item_idx: usize) {
-    pos_to_items[pos].remove(item_idx);
-}
-
-fn check_positions_for_queue(
-    pos_to_items: &[SetQuery],
-    queue: &mut VecDeque<usize>,
-    in_queue: &mut [bool],
-    idx0: usize,
-    idx1: usize,
-    idx2: usize,
-) {
-    for pos in [idx0, idx1, idx2] {
-        if pos_to_items[pos].len() == 1 && !in_queue[pos] {
-            in_queue[pos] = true;
-            queue.push_back(pos);
-        }
     }
 }
 

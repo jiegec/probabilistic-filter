@@ -1,3 +1,6 @@
 /target
 *.csv
 *.png
+*.svg
+perf.data
+perf.data.old
