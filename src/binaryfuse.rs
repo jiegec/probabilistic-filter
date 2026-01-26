@@ -171,8 +171,8 @@ where
             // Generate random seeds for each hash function and segment index
             let seed0 = rng.random::<u64>();
             let mut seeds = [0u64; AR];
-            for i in 0..AR {
-                seeds[i] = rng.random::<u64>();
+            for seed in seeds.iter_mut() {
+                *seed = rng.random::<u64>();
             }
 
             for (item_idx, item) in items.iter().enumerate() {
