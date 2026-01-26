@@ -1,5 +1,5 @@
 use crate::traits::{Constructible, ProbabilisticFilter};
-use crate::utils::{SetQuery, mask_fingerprint};
+use crate::utils::{SetQuery, mask_fingerprint, reduce};
 use num_traits::{One, Zero};
 use rand::Rng;
 use std::collections::VecDeque;
@@ -156,20 +156,18 @@ where
 
             let hash0 = |item: &T| -> usize {
                 let hash = hash(item, seed0);
-
-                hash % third_size
+                reduce(hash as u32, third_size as u32) as usize
             };
 
             let hash1 = |item: &T| -> usize {
                 let hash = hash(item, seed1);
-
-                third_size + (hash % third_size)
+                third_size + reduce(hash as u32, third_size as u32) as usize
             };
 
             let hash2 = |item: &T| -> usize {
                 let hash = hash(item, seed2);
-
-                two_thirds_size + (hash % (array_size - two_thirds_size))
+                two_thirds_size
+                    + reduce(hash as u32, (array_size - two_thirds_size) as u32) as usize
             };
 
             for (item_idx, item) in items.iter().enumerate() {
@@ -316,27 +314,15 @@ where
         let third_size = array_size / 3;
         let two_thirds_size = 2 * third_size;
 
-        let hash0 = |item: &T| -> usize {
-            let hash = hash(item, seed0);
+        let hash0 = hash(item, seed0);
+        let idx0 = reduce(hash0 as u32, third_size as u32) as usize;
 
-            hash % third_size
-        };
+        let hash1 = hash(item, seed1);
+        let idx1 = third_size + reduce(hash1 as u32, third_size as u32) as usize;
 
-        let hash1 = |item: &T| -> usize {
-            let hash = hash(item, seed1);
-
-            third_size + (hash % third_size)
-        };
-
-        let hash2 = |item: &T| -> usize {
-            let hash = hash(item, seed2);
-
-            two_thirds_size + (hash % (array_size - two_thirds_size))
-        };
-
-        let idx0 = (hash0)(item);
-        let idx1 = (hash1)(item);
-        let idx2 = (hash2)(item);
+        let hash2 = hash(item, seed2);
+        let idx2 =
+            two_thirds_size + reduce(hash2 as u32, (array_size - two_thirds_size) as u32) as usize;
 
         let xored = self.fingerprints[idx0] ^ self.fingerprints[idx1] ^ self.fingerprints[idx2];
         xored == fingerprint
@@ -380,7 +366,9 @@ mod tests {
     fn test_xor_filter_basic() {
         use crate::traits::Constructible;
 
-        let hash = |item: &u64, seed: u64| -> usize { (*item ^ seed) as usize };
+        let hash = |item: &u64, seed: u64| -> usize {
+            (*item ^ seed).wrapping_mul(0x5bd1e9955bd1e995) as usize
+        };
         let fp_func = |item: &u64| -> u8 { (item.wrapping_mul(0x5bd1e9955bd1e995) & 0xFF) as u8 };
         let items: Vec<u64> = vec![1, 2, 3];
         let config = XorFilterConfig::new(hash, fp_func, 8);
@@ -397,7 +385,9 @@ mod tests {
     fn test_xor_filter_empty() {
         use crate::traits::Constructible;
 
-        let hash = |item: &u64, seed: u64| -> usize { (*item ^ seed) as usize };
+        let hash = |item: &u64, seed: u64| -> usize {
+            (*item ^ seed).wrapping_mul(0x5bd1e9955bd1e995) as usize
+        };
         let fp_func = |item: &u64| -> u8 { (item.wrapping_mul(0x5bd1e9955bd1e995) & 0xFF) as u8 };
         let items: Vec<u64> = vec![];
         let config = XorFilterConfig::new(hash, fp_func, 8);

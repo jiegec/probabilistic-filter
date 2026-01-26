@@ -72,3 +72,9 @@ impl SetQuery {
         self.count
     }
 }
+
+// Sample [0, size-1] from hash in a fast way
+pub fn reduce(hash: u32, size: u32) -> u32 {
+    // http://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/
+    ((hash as u64 * size as u64) >> 32) as u32
+}

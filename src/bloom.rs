@@ -1,4 +1,7 @@
-use crate::traits::{Insertable, ProbabilisticFilter};
+use crate::{
+    traits::{Insertable, ProbabilisticFilter},
+    utils::reduce,
+};
 use fixedbitset::FixedBitSet;
 use std::hash::Hash;
 
@@ -91,8 +94,8 @@ where
     fn contains(&self, item: &T) -> bool {
         for hash_func in &self.hash_funcs {
             let hash = hash_func(item);
-            let idx = hash as usize % self.bits.len();
-            if !self.bits.contains(idx) {
+            let idx = reduce(hash as u32, self.bits.len() as u32);
+            if !self.bits.contains(idx as usize) {
                 return false;
             }
         }
@@ -112,8 +115,8 @@ where
     fn insert(&mut self, item: &T) -> bool {
         for hash_func in &self.hash_funcs {
             let hash = hash_func(item);
-            let idx = hash as usize % self.bits.len();
-            self.bits.set(idx, true);
+            let idx = reduce(hash as u32, self.bits.len() as u32);
+            self.bits.set(idx as usize, true);
         }
         true
     }

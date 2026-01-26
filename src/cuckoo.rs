@@ -1,5 +1,5 @@
 use crate::traits::{Deletable, Insertable, ProbabilisticFilter};
-use crate::utils::mask_fingerprint;
+use crate::utils::{mask_fingerprint, reduce};
 use num_traits::{One, Zero};
 use rand::Rng;
 use std::ops::{BitAnd, Not, Shl, Sub};
@@ -70,12 +70,13 @@ where
     /// ```
     /// use probabilistic_filter::{cuckoo::CuckooFilter, Deletable, Insertable, ProbabilisticFilter};
     ///
+    /// let num_buckets = 32;
     /// let hash_fn = |item: &u64| item.wrapping_mul(0x5bd1e9955bd1e995);
     /// let fp_func = |item: &u64| hash_fn(item) as u8;
     /// let alt_func = |index: usize, fp: u8| {
-    ///     (index as u64 ^ (fp as u64).wrapping_mul(0x5bd1e9955bd1e995)) as usize
+    ///     (index as u64 ^ (fp as u64).wrapping_mul(0x5bd1e9955bd1e995)) as usize % num_buckets
     /// };
-    /// let mut cuckoo = CuckooFilter::new(32, 4, 500, hash_fn, fp_func, alt_func, 8);
+    /// let mut cuckoo = CuckooFilter::new(num_buckets, 4, 500, hash_fn, fp_func, alt_func, 8);
     ///
     /// cuckoo.insert(&1);
     /// assert!(cuckoo.contains(&1));
@@ -106,7 +107,7 @@ where
 
     fn get_index(&self, item: &T) -> usize {
         let hash = (self.hash_func)(item);
-        (hash as usize) % self.num_buckets
+        reduce(hash as u32, self.num_buckets as u32) as usize
     }
 
     fn get_fingerprint(&self, item: &T) -> F {
@@ -122,7 +123,9 @@ where
     }
 
     fn get_alt_index(&self, index: usize, fingerprint: F) -> usize {
-        (self.alt_index_func)(index, fingerprint) % self.num_buckets
+        let alt_index = (self.alt_index_func)(index, fingerprint);
+        debug_assert!(alt_index < self.num_buckets);
+        alt_index
     }
 
     fn bucket_offset(&self, bucket_idx: usize) -> usize {
@@ -290,7 +293,7 @@ mod tests {
         let hash_fn = |item: &u64| item.wrapping_mul(0x5bd1e9955bd1e995);
         let fp_func = |item: &u64| hash_fn(item) as u8;
         let alt_func = |index: usize, fp: u8| {
-            (index as u64 ^ (fp as u64).wrapping_mul(0x5bd1e9955bd1e995)) as usize
+            (index as u64 ^ (fp as u64).wrapping_mul(0x5bd1e9955bd1e995)) as usize % num_buckets
         };
         let mut cuckoo = CuckooFilter::new(
             num_buckets,
@@ -317,7 +320,7 @@ mod tests {
         let hash_fn = |item: &u64| item.wrapping_mul(0x5bd1e9955bd1e995);
         let fp_func = |item: &u64| hash_fn(item) as u8;
         let alt_func = |index: usize, fp: u8| {
-            (index as u64 ^ (fp as u64).wrapping_mul(0x5bd1e9955bd1e995)) as usize
+            (index as u64 ^ (fp as u64).wrapping_mul(0x5bd1e9955bd1e995)) as usize % num_buckets
         };
         let mut cuckoo = CuckooFilter::new(
             num_buckets,
@@ -347,7 +350,7 @@ mod tests {
         let hash_fn = |item: &u64| item.wrapping_mul(0x5bd1e9955bd1e995);
         let fp_func = |item: &u64| hash_fn(item) as u8;
         let alt_func = |index: usize, fp: u8| {
-            (index as u64 ^ (fp as u64).wrapping_mul(0x5bd1e9955bd1e995)) as usize
+            (index as u64 ^ (fp as u64).wrapping_mul(0x5bd1e9955bd1e995)) as usize % num_buckets
         };
         let mut cuckoo = CuckooFilter::new(
             num_buckets,
@@ -376,7 +379,7 @@ mod tests {
         let hash_fn = |item: &u64| item.wrapping_mul(0x5bd1e9955bd1e995);
         let fp_func = |item: &u64| hash_fn(item) as u8;
         let alt_func = |index: usize, fp: u8| {
-            (index as u64 ^ (fp as u64).wrapping_mul(0x5bd1e9955bd1e995)) as usize
+            (index as u64 ^ (fp as u64).wrapping_mul(0x5bd1e9955bd1e995)) as usize % num_buckets
         };
         let mut cuckoo = CuckooFilter::new(
             num_buckets,
