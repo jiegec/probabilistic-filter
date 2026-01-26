@@ -160,7 +160,7 @@ fn main() {
         let xor_effective_bits = (bits_per_key / 1.23).ceil() as usize;
         let xor_fp_seed: u64 = rng.random();
         let xor_fingerprint_func = |item: &u64| -> u64 { hash_with_seed(item, xor_fp_seed) };
-        let xor_hash = |item: &u64, seed: u64| -> usize { hash_with_seed(item, seed) as usize };
+        let xor_hash = |item: &u64, seed: u64| -> u64 { hash_with_seed(item, seed) };
         let xor_config = XorFilterConfig::new(xor_hash, xor_fingerprint_func, xor_effective_bits);
         let xor_start = Instant::now();
         let xor = XorFilter::from_iter_with(inserted_keys.iter().copied(), xor_config);
@@ -188,7 +188,7 @@ fn main() {
         let bf3_effective_bits = (bits_per_key / 1.125).ceil() as usize;
         let bf3_fp_seed: u64 = rng.random();
         let bf3_fingerprint_func = |item: &u64| -> u64 { hash_with_seed(item, bf3_fp_seed) };
-        let bf3_hash = |item: &u64, seed: u64| -> usize { hash_with_seed(item, seed) as usize };
+        let bf3_hash = |item: &u64, seed: u64| -> u64 { hash_with_seed(item, seed) };
         let bf3_config = BinaryFuseConfig::new(bf3_hash, bf3_fingerprint_func, bf3_effective_bits);
         let bf3_start = Instant::now();
         let bf3 = BinaryFuseFilter3::from_iter_with(inserted_keys.iter().copied(), bf3_config);
@@ -217,7 +217,7 @@ fn main() {
         let bf4_effective_bits = (bits_per_key / 1.075).ceil() as usize;
         let bf4_fp_seed: u64 = rng.random();
         let bf4_fingerprint_func = |item: &u64| -> u64 { hash_with_seed(item, bf4_fp_seed) };
-        let bf4_hash = |item: &u64, seed: u64| -> usize { hash_with_seed(item, seed) as usize };
+        let bf4_hash = |item: &u64, seed: u64| -> u64 { hash_with_seed(item, seed) };
         let bf4_config = BinaryFuseConfig::new(bf4_hash, bf4_fingerprint_func, bf4_effective_bits);
         let bf4_start = Instant::now();
         let bf4 = BinaryFuseFilter4::from_iter_with(inserted_keys.iter().copied(), bf4_config);

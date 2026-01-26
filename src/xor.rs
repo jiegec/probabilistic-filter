@@ -21,7 +21,7 @@ use std::ops::{BitAnd, BitXor, Not, Shl, Sub};
 pub struct XorFilterConfig<T, F, H, FP>
 where
     F: Copy,
-    H: Fn(&T, u64) -> usize,
+    H: Fn(&T, u64) -> u64,
     FP: Fn(&T) -> F,
 {
     pub hash: H,
@@ -33,7 +33,7 @@ where
 impl<T, F, H, FP> XorFilterConfig<T, F, H, FP>
 where
     F: Copy,
-    H: Fn(&T, u64) -> usize,
+    H: Fn(&T, u64) -> u64,
     FP: Fn(&T) -> F,
 {
     /// Create a new configuration with the given hash function, fingerprint function, and effective bits.
@@ -79,7 +79,7 @@ where
         + Not<Output = F>
         + Shl<usize, Output = F>
         + Sub<Output = F>,
-    H: Fn(&T, u64) -> usize,
+    H: Fn(&T, u64) -> u64,
     FP: Fn(&T) -> F,
 {
     array_size: usize,
@@ -104,7 +104,7 @@ where
         + Not<Output = F>
         + Shl<usize, Output = F>
         + Sub<Output = F>,
-    H: Fn(&T, u64) -> usize,
+    H: Fn(&T, u64) -> u64,
     FP: Fn(&T) -> F,
 {
     /// Create a new XOR filter from an iterator of items with provided hash functions.
@@ -299,7 +299,7 @@ where
         + Not<Output = F>
         + Shl<usize, Output = F>
         + Sub<Output = F>,
-    H: Fn(&T, u64) -> usize,
+    H: Fn(&T, u64) -> u64,
     FP: Fn(&T) -> F,
 {
     fn contains(&self, item: &T) -> bool {
@@ -344,7 +344,7 @@ where
         + Not<Output = F>
         + Shl<usize, Output = F>
         + Sub<Output = F>,
-    H: Fn(&T, u64) -> usize,
+    H: Fn(&T, u64) -> u64,
     FP: Fn(&T) -> F,
 {
     type Config = XorFilterConfig<T, F, H, FP>;
@@ -366,9 +366,8 @@ mod tests {
     fn test_xor_filter_basic() {
         use crate::traits::Constructible;
 
-        let hash = |item: &u64, seed: u64| -> usize {
-            (*item ^ seed).wrapping_mul(0x5bd1e9955bd1e995) as usize
-        };
+        let hash =
+            |item: &u64, seed: u64| -> u64 { (*item ^ seed).wrapping_mul(0x5bd1e9955bd1e995) };
         let fp_func = |item: &u64| -> u8 { (item.wrapping_mul(0x5bd1e9955bd1e995) & 0xFF) as u8 };
         let items: Vec<u64> = vec![1, 2, 3];
         let config = XorFilterConfig::new(hash, fp_func, 8);
@@ -385,9 +384,8 @@ mod tests {
     fn test_xor_filter_empty() {
         use crate::traits::Constructible;
 
-        let hash = |item: &u64, seed: u64| -> usize {
-            (*item ^ seed).wrapping_mul(0x5bd1e9955bd1e995) as usize
-        };
+        let hash =
+            |item: &u64, seed: u64| -> u64 { (*item ^ seed).wrapping_mul(0x5bd1e9955bd1e995) };
         let fp_func = |item: &u64| -> u8 { (item.wrapping_mul(0x5bd1e9955bd1e995) & 0xFF) as u8 };
         let items: Vec<u64> = vec![];
         let config = XorFilterConfig::new(hash, fp_func, 8);

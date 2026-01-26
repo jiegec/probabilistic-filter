@@ -112,14 +112,10 @@ where
 
     fn get_fingerprint(&self, item: &T) -> F {
         let fp = (self.fingerprint_func)(item);
-        let masked = self.mask_fingerprint(fp);
+        let masked = mask_fingerprint(self.effective_bits, fp);
         // Ensure non-zero fingerprint (0 is used as sentinel for empty slots)
         // Only adjust if masked result is actually zero
         if masked.is_zero() { F::one() } else { masked }
-    }
-
-    fn mask_fingerprint(&self, fp: F) -> F {
-        mask_fingerprint(self.effective_bits, fp)
     }
 
     fn get_alt_index(&self, index: usize, fingerprint: F) -> usize {

@@ -20,7 +20,7 @@ use std::{collections::VecDeque, ops::Not};
 pub struct BinaryFuseConfig<T, F, H, FP>
 where
     F: Copy,
-    H: Fn(&T, u64) -> usize,
+    H: Fn(&T, u64) -> u64,
     FP: Fn(&T) -> F,
 {
     pub hash: H,
@@ -32,7 +32,7 @@ where
 impl<T, F, H, FP> BinaryFuseConfig<T, F, H, FP>
 where
     F: Copy,
-    H: Fn(&T, u64) -> usize,
+    H: Fn(&T, u64) -> u64,
     FP: Fn(&T) -> F,
 {
     /// Create a new configuration with the given hash function, fingerprint function, and effective bits.
@@ -78,7 +78,7 @@ where
         + std::ops::BitAnd<Output = F>
         + std::ops::Shl<usize, Output = F>
         + std::ops::Sub<Output = F>,
-    H: Fn(&T, u64) -> usize,
+    H: Fn(&T, u64) -> u64,
     FP: Fn(&T) -> F,
 {
     num_segments: usize,
@@ -106,7 +106,7 @@ where
         + Zero
         + One
         + Not<Output = F>,
-    H: Fn(&T, u64) -> usize,
+    H: Fn(&T, u64) -> u64,
     FP: Fn(&T) -> F,
 {
     /// Create a new binary fuse filter from an iterator of items.
@@ -202,12 +202,12 @@ where
 
             for (item_idx, item) in items.iter().enumerate() {
                 // starting segment index
-                let segment_idx = (config.hash)(item, seed0) % num_segments;
+                let segment_idx = (config.hash)(item, seed0) as usize % num_segments;
                 for (i, seed) in seeds.iter().enumerate() {
                     // consecutive segment indices
                     let idx = (segment_idx + i) * segment_size
-                        + (config.hash)(item, *seed) % segment_size;
-                    pos_to_items[idx].insert(item_idx);
+                        + (config.hash)(item, *seed) as usize % segment_size;
+                    pos_to_items[idx as usize].insert(item_idx);
                 }
             }
 
@@ -242,11 +242,11 @@ where
                 // Compute indices again
                 let item = &items[item_idx];
                 let mut other_indices = [0usize; AR];
-                let segment_idx = (config.hash)(item, seed0) % num_segments;
+                let segment_idx = (config.hash)(item, seed0) as usize % num_segments;
                 for (i, seed) in seeds.iter().enumerate() {
                     // consecutive segment indices
                     let idx = (segment_idx + i) * segment_size
-                        + (config.hash)(item, *seed) % segment_size;
+                        + (config.hash)(item, *seed) as usize % segment_size;
                     other_indices[i] = idx;
                 }
 
@@ -336,7 +336,7 @@ where
         + Zero
         + One
         + Not<Output = F>,
-    H: Fn(&T, u64) -> usize,
+    H: Fn(&T, u64) -> u64,
     FP: Fn(&T) -> F,
 {
     fn contains(&self, item: &T) -> bool {
@@ -344,11 +344,11 @@ where
             Self::get_fingerprint(&self.fingerprint_func, self.effective_bits, item);
 
         // starting segment index
-        let segment_idx = (self.hash)(item, self.seed0) % self.num_segments;
+        let segment_idx = (self.hash)(item, self.seed0) as usize % self.num_segments;
         for i in 0..AR {
             // consecutive segment indices
             let idx = (segment_idx + i) * self.segment_size
-                + (self.hash)(item, self.seeds[i]) % self.segment_size;
+                + (self.hash)(item, self.seeds[i]) as usize % self.segment_size;
             fingerprint = fingerprint ^ self.fingerprints[idx];
         }
 
@@ -371,7 +371,7 @@ where
         + Zero
         + One
         + Not<Output = F>,
-    H: Fn(&T, u64) -> usize,
+    H: Fn(&T, u64) -> u64,
     FP: Fn(&T) -> F,
 {
     type Config = BinaryFuseConfig<T, F, H, FP>;
@@ -393,7 +393,7 @@ mod tests {
     fn test_binary_fuse_3way_basic() {
         use crate::traits::Constructible;
 
-        let hash = |item: &u64, seed: u64| -> usize { (*item ^ seed) as usize };
+        let hash = |item: &u64, seed: u64| -> u64 { *item ^ seed };
         let fp_func = |item: &u64| -> u8 { (item.wrapping_mul(0x5bd1e9955bd1e995) & 0xFF) as u8 };
         let items: Vec<u64> = vec![1, 2, 3];
         let config = BinaryFuseConfig::new(hash, fp_func, 8);
@@ -410,7 +410,7 @@ mod tests {
     fn test_binary_fuse_4way_basic() {
         use crate::traits::Constructible;
 
-        let hash = |item: &u64, seed: u64| -> usize { (*item ^ seed) as usize };
+        let hash = |item: &u64, seed: u64| -> u64 { *item ^ seed };
         let fp_func = |item: &u64| -> u8 { (item.wrapping_mul(0x5bd1e9955bd1e995) & 0xFF) as u8 };
         let items: Vec<u64> = vec![1, 2, 3];
         let config = BinaryFuseConfig::new(hash, fp_func, 8);
@@ -427,7 +427,7 @@ mod tests {
     fn test_binary_fuse_empty() {
         use crate::traits::Constructible;
 
-        let hash = |item: &u64, seed: u64| -> usize { (*item ^ seed) as usize };
+        let hash = |item: &u64, seed: u64| -> u64 { *item ^ seed };
         let fp_func = |item: &u64| -> u8 { (item.wrapping_mul(0x5bd1e9955bd1e995) & 0xFF) as u8 };
         let items: Vec<u64> = vec![];
         let config = BinaryFuseConfig::new(hash, fp_func, 8);
@@ -442,7 +442,7 @@ mod tests {
         use crate::traits::Constructible;
 
         // Use better hash functions for the large set test
-        let hash = |item: &u64, seed: u64| -> usize {
+        let hash = |item: &u64, seed: u64| -> u64 {
             let mut h = item.wrapping_mul(0x5bd1e9955bd1e995);
             h = h.wrapping_add(seed);
             h ^= h >> 33;
@@ -450,7 +450,7 @@ mod tests {
             h ^= h >> 33;
             h = h.wrapping_mul(0xc4ceb9fe1a85ec53);
             h ^= h >> 33;
-            h as usize
+            h
         };
         let fp_func = |item: &u64| -> u8 {
             let mut h = item.wrapping_mul(0x9e3779b97f4a7c15);
