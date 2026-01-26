@@ -87,10 +87,12 @@ fn main() {
         // Build Cuckoo filter
         let cuckoo_items_per_bucket = 4;
         let cuckoo_load_factor = 0.955;
-        let cuckoo_num_buckets =
-            ((NUM_KEYS as f64 / cuckoo_load_factor / cuckoo_items_per_bucket as f64).ceil()
-                as usize)
-                .next_power_of_two();
+        let mut cuckoo_num_buckets =
+            (NUM_KEYS as f64 / cuckoo_load_factor / cuckoo_items_per_bucket as f64).ceil() as usize;
+        // the algorithm below require it to be even to avoid index == alt_idnex
+        if cuckoo_num_buckets % 2 == 1 {
+            cuckoo_num_buckets += 1;
+        }
         let cuckoo_actual_load_factor =
             NUM_KEYS as f64 / cuckoo_num_buckets as f64 / cuckoo_items_per_bucket as f64;
         let cuckoo_fingerprint_bits = (NUM_KEYS as f64 * bits_per_key
@@ -103,7 +105,15 @@ fn main() {
         let cuckoo_fingerprint_func = |item: &u64| -> u64 { hash_with_seed(item, cuckoo_fp_seed) };
         let cuckoo_alt_index = |index: usize, fp: u64| -> usize {
             let hashed_fp = hash_with_seed(&fp, cuckoo_fp_seed);
-            index ^ hashed_fp as usize
+            // instead of using xor which requires power of two buckets
+            // use mirrored index, learned from fastfilters
+            let r = hashed_fp as usize % (cuckoo_num_buckets / 2) * 2 + 1;
+            let mut alt_index = (cuckoo_num_buckets + cuckoo_num_buckets - index) - r;
+            // modulo converted to branch + subtract
+            if alt_index >= cuckoo_num_buckets {
+                alt_index -= cuckoo_num_buckets
+            }
+            alt_index
         };
         let (cuckoo, cuckoo_construct_time) = loop {
             let start = Instant::now();
