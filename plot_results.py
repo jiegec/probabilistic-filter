@@ -18,6 +18,11 @@ bloom_data = [
     for r in data
     if r["filter_type"] == "Bloom"
 ]
+onehashing_data = [
+    (float(r["bits_per_key"]), float(r["fp_rate"]))
+    for r in data
+    if r["filter_type"] == "OneHashingBloom"
+]
 cuckoo_data = [
     (float(r["bits_per_key"]), float(r["fp_rate"]))
     for r in data
@@ -41,6 +46,7 @@ binaryfuse4_data = [
 
 # Sort by bits_per_key for each filter type
 bloom_data.sort(key=lambda x: x[0])
+onehashing_data.sort(key=lambda x: x[0])
 cuckoo_data.sort(key=lambda x: x[0])
 xor_data.sort(key=lambda x: x[0])
 binaryfuse3_data.sort(key=lambda x: x[0])
@@ -51,6 +57,11 @@ if bloom_data:
     bloom_x, bloom_y = zip(*bloom_data)
 else:
     bloom_x, bloom_y = [], []
+
+if onehashing_data:
+    onehashing_x, onehashing_y = zip(*onehashing_data)
+else:
+    onehashing_x, onehashing_y = [], []
 
 if cuckoo_data:
     cuckoo_x, cuckoo_y = zip(*cuckoo_data)
@@ -78,6 +89,19 @@ fig, ax = plt.subplots(figsize=(10, 7))
 # Plot data points
 if bloom_x:
     ax.scatter(bloom_x, bloom_y, c="blue", label="Bloom", s=100, alpha=0.7)
+# One-Hashing Bloom Filter has (almost) the same false positive rate as Bloom,
+# so draw it with hollow markers on top of the Bloom points.
+if onehashing_x:
+    ax.scatter(
+        onehashing_x,
+        onehashing_y,
+        marker="D",
+        c="none",
+        edgecolors="cyan",
+        linewidths=1.8,
+        s=110,
+        label="One-Hashing Bloom",
+    )
 if cuckoo_x:
     ax.scatter(cuckoo_x, cuckoo_y, c="red", label="Cuckoo", s=100, alpha=0.7)
 if xor_x:
@@ -90,6 +114,8 @@ if bf4_x:
 # Connect points with lines for each filter type
 if len(bloom_x) > 1:
     ax.plot(bloom_x, bloom_y, c="blue", alpha=0.5, linestyle="--")
+if len(onehashing_x) > 1:
+    ax.plot(onehashing_x, onehashing_y, c="cyan", alpha=0.5, linestyle="--")
 if len(cuckoo_x) > 1:
     ax.plot(cuckoo_x, cuckoo_y, c="red", alpha=0.5, linestyle="--")
 if len(xor_x) > 1:
@@ -124,7 +150,7 @@ ax.plot(
     alpha=0.8,
     linestyle="-.",
     linewidth=2,
-    label="Bloom (theoretical)",
+    label="Bloom / One-Hashing Bloom (theoretical)",
 )
 ax.plot(
     theoretical_cuckoo,
