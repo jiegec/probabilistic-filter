@@ -3,7 +3,9 @@ use probabilistic_filter::XorFilterConfig;
 use probabilistic_filter::binaryfuse::{BinaryFuseConfig, BinaryFuseFilter3, BinaryFuseFilter4};
 use probabilistic_filter::bloom::BloomFilter;
 use probabilistic_filter::cuckoo::CuckooFilter;
+use probabilistic_filter::onehashing::OneHashingBloomFilter;
 use probabilistic_filter::traits::{Constructible, Insertable, ProbabilisticFilter};
+use probabilistic_filter::utils::hash_with_seed;
 use probabilistic_filter::xor::XorFilter;
 use rand::Rng;
 use std::hint::black_box;
@@ -74,6 +76,71 @@ fn bench_bloom_query(c: &mut Criterion) {
             b.iter(|| {
                 for key in keys {
                     std::hint::black_box(filter.contains(std::hint::black_box(key)));
+                }
+            })
+        });
+    }
+
+    group.finish();
+}
+
+fn bench_onehashing_insert(c: &mut Criterion) {
+    let mut group = c.benchmark_group("onehashing_insert");
+
+    for &size in SIZES {
+        let false_positive_rate = 0.01;
+        let num_bits = OneHashingBloomFilter::<u64, fn(&u64) -> u64>::optimal_num_bits(
+            size,
+            false_positive_rate,
+        );
+        let num_hashes =
+            OneHashingBloomFilter::<u64, fn(&u64) -> u64>::optimal_num_hashes(num_bits, size);
+        let keys: Vec<u64> = (0..size).map(|i| i as u64).collect();
+        let mut rng = rand::rng();
+        let seed: u64 = rng.random();
+        let hash_func = move |item: &u64| hash_with_seed(item, seed);
+
+        group.throughput(Throughput::Elements(size as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(size), &keys, |b, keys| {
+            b.iter(|| {
+                let mut filter = OneHashingBloomFilter::new(num_bits, num_hashes, hash_func);
+                for key in keys {
+                    black_box(filter.insert(black_box(key)));
+                }
+                filter
+            })
+        });
+    }
+
+    group.finish();
+}
+
+fn bench_onehashing_query(c: &mut Criterion) {
+    let mut group = c.benchmark_group("onehashing_query");
+
+    for &size in SIZES {
+        let false_positive_rate = 0.01;
+        let num_bits = OneHashingBloomFilter::<u64, fn(&u64) -> u64>::optimal_num_bits(
+            size,
+            false_positive_rate,
+        );
+        let num_hashes =
+            OneHashingBloomFilter::<u64, fn(&u64) -> u64>::optimal_num_hashes(num_bits, size);
+        let keys: Vec<u64> = (0..size).map(|i| i as u64).collect();
+        let mut rng = rand::rng();
+        let seed: u64 = rng.random();
+        let hash_func = move |item: &u64| hash_with_seed(item, seed);
+
+        let mut filter = OneHashingBloomFilter::new(num_bits, num_hashes, hash_func);
+        for key in &keys {
+            filter.insert(key);
+        }
+
+        group.throughput(Throughput::Elements(size as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(size), &keys, |b, keys| {
+            b.iter(|| {
+                for key in keys {
+                    black_box(filter.contains(black_box(key)));
                 }
             })
         });
@@ -295,6 +362,7 @@ fn bench_binaryfuse4_query(c: &mut Criterion) {
 }
 
 criterion_group!(bloom, bench_bloom_insert, bench_bloom_query);
+criterion_group!(onehashing, bench_onehashing_insert, bench_onehashing_query);
 criterion_group!(cuckoo, bench_cuckoo_query,);
 criterion_group!(xor, bench_xor_creation, bench_xor_query);
 criterion_group!(
@@ -307,4 +375,4 @@ criterion_group!(
     bench_binaryfuse4_creation,
     bench_binaryfuse4_query
 );
-criterion_main!(bloom, cuckoo, xor, binaryfuse3, binaryfuse4);
+criterion_main!(bloom, onehashing, cuckoo, xor, binaryfuse3, binaryfuse4);

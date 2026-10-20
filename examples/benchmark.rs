@@ -1,6 +1,7 @@
 use probabilistic_filter::binaryfuse::{BinaryFuseConfig, BinaryFuseFilter3, BinaryFuseFilter4};
 use probabilistic_filter::bloom::BloomFilter;
 use probabilistic_filter::cuckoo::CuckooFilter;
+use probabilistic_filter::onehashing::OneHashingBloomFilter;
 use probabilistic_filter::traits::{Constructible, Insertable, ProbabilisticFilter};
 use probabilistic_filter::utils::{hash_with_seed, reduce};
 use probabilistic_filter::xor::XorFilter;
@@ -84,6 +85,34 @@ fn main() {
             parameters: format!("{} hash functions", bloom_num_hashes),
         };
         print_construction_results(&bloom_bench);
+
+        // Build One-Hashing Bloom filter (single base hash function)
+        let ohbf_num_hashes = bloom_num_hashes;
+        let ohbf_seed = bloom_seeds[0];
+        let ohbf_hash = move |item: &u64| hash_with_seed(item, ohbf_seed);
+        let ohbf_start = Instant::now();
+        let mut ohbf = OneHashingBloomFilter::new(bloom_num_bits, ohbf_num_hashes, ohbf_hash);
+        for key in &inserted_keys {
+            ohbf.insert(key);
+        }
+        let ohbf_construct_time = ohbf_start.elapsed();
+        assert!(
+            inserted_keys.iter().all(|&k| ohbf.contains(&k)),
+            "One-Hashing Bloom filter: all inserted keys should return true for contains()"
+        );
+        let ohbf_bench = FilterBenchmark {
+            name: "OneHashingBloom",
+            construct_time: ohbf_construct_time,
+            actual_bits_per_key: ohbf.bits_per_key(NUM_KEYS),
+            size_in_bits: ohbf.size_in_bits(),
+            parameters: format!(
+                "{} partitions, {} hash function, {:?} sizes",
+                ohbf_num_hashes,
+                1,
+                ohbf.partition_lengths()
+            ),
+        };
+        print_construction_results(&ohbf_bench);
 
         // Build Cuckoo filter
         let cuckoo_items_per_bucket = 4;
@@ -251,6 +280,7 @@ fn main() {
 
             // Query each filter
             let bloom_fp = query_filter(&bloom, &query_keys, &inserted_set, &bloom_bench);
+            let ohbf_fp = query_filter(&ohbf, &query_keys, &inserted_set, &ohbf_bench);
             let cuckoo_fp = query_filter(&cuckoo, &query_keys, &inserted_set, &cuckoo_bench);
             let xor_fp = query_filter(&xor, &query_keys, &inserted_set, &xor_bench);
             let bf3_fp = query_filter(&bf3, &query_keys, &inserted_set, &bf3_bench);
@@ -261,6 +291,11 @@ fn main() {
                     bits_per_key: bloom_bench.actual_bits_per_key,
                     filter_type: "Bloom".to_string(),
                     fp_rate: bloom_fp,
+                });
+                all_results.push(BenchmarkResult {
+                    bits_per_key: ohbf_bench.actual_bits_per_key,
+                    filter_type: "OneHashingBloom".to_string(),
+                    fp_rate: ohbf_fp,
                 });
                 all_results.push(BenchmarkResult {
                     bits_per_key: cuckoo_bench.actual_bits_per_key,
