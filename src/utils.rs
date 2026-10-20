@@ -83,6 +83,29 @@ impl SetQuery {
     }
 }
 
+/// Calculate the optimal number of bits for a Bloom-style filter.
+///
+/// `m = -n * ln(p) / (ln 2)^2`
+pub fn optimal_num_bits(expected_items: usize, false_positive_rate: f64) -> usize {
+    if expected_items == 0 || false_positive_rate <= 0.0 || false_positive_rate >= 1.0 {
+        return 1;
+    }
+    let ln_2_squared = std::f64::consts::LN_2 * std::f64::consts::LN_2;
+    let bits = (-(expected_items as f64) * false_positive_rate.ln() / ln_2_squared).ceil() as usize;
+    bits.max(1)
+}
+
+/// Calculate the optimal number of hash functions for a Bloom-style filter.
+///
+/// `k = (m / n) * ln 2`
+pub fn optimal_num_hashes(num_bits: usize, expected_items: usize) -> usize {
+    if expected_items == 0 {
+        return 1;
+    }
+    let hashes = (num_bits as f64 / expected_items as f64 * std::f64::consts::LN_2).ceil() as usize;
+    hashes.max(1)
+}
+
 // Sample [0, size-1] from hash in a fast way
 pub fn reduce(hash: u32, size: u32) -> u32 {
     // http://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/

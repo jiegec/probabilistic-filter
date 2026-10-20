@@ -1,6 +1,6 @@
 use crate::{
     traits::{Insertable, ProbabilisticFilter},
-    utils::reduce,
+    utils::{optimal_num_bits, optimal_num_hashes, reduce},
 };
 use fixedbitset::FixedBitSet;
 use std::hash::Hash;
@@ -62,13 +62,7 @@ where
     /// * `expected_items` - Expected number of items to be inserted
     /// * `false_positive_rate` - Desired false positive rate (between 0 and 1)
     pub fn optimal_num_bits(expected_items: usize, false_positive_rate: f64) -> usize {
-        if expected_items == 0 || false_positive_rate <= 0.0 || false_positive_rate >= 1.0 {
-            return 1;
-        }
-        let ln_2_squared = std::f64::consts::LN_2 * std::f64::consts::LN_2;
-        let bits =
-            (-(expected_items as f64) * false_positive_rate.ln() / ln_2_squared).ceil() as usize;
-        bits.max(1)
+        optimal_num_bits(expected_items, false_positive_rate)
     }
 
     /// Calculate optimal number of hash functions for a given number of bits and expected items.
@@ -77,12 +71,7 @@ where
     /// * `num_bits` - Number of bits in the filter
     /// * `expected_items` - Expected number of items to be inserted
     pub fn optimal_num_hashes(num_bits: usize, expected_items: usize) -> usize {
-        if expected_items == 0 {
-            return 1;
-        }
-        let hashes =
-            (num_bits as f64 / expected_items as f64 * std::f64::consts::LN_2).ceil() as usize;
-        hashes.max(1)
+        optimal_num_hashes(num_bits, expected_items)
     }
 }
 
